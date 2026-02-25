@@ -1,0 +1,322 @@
+# ================================
+# macOS
+# ================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ================================
+# Windows
+# ================================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ================================
+# Linux
+# ================================
+*~
+.directory
+
+# ================================
+# Editor/IDE
+# ================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (IntelliJ, PyCharm, WebStorm, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ================================
+# Node.js
+# ================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ================================
+# Python
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ================================
+# Java/Kotlin
+# ================================
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+target/
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# ================================
+# Go
+# ================================
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# ================================
+# Rust
+# ================================
+target/
+Cargo.lock
+**/*.rs.bk
+
+# ================================
+# Ruby
+# ================================
+*.gem
+*.rbc
+/.config
+/coverage/
+/InstalledFiles
+/pkg/
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
+/tmp/
+/.bundle/
+/vendor/bundle
+/lib/bundler/man/
+.ruby-version
+.ruby-gemset
+.rvmrc
+
+# ================================
+# PHP
+# ================================
+/vendor/
+composer.lock
+.phpunit.result.cache
+.phpcs-cache
+phpcs.xml
+
+# ================================
+# .NET/C#
+# ================================
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+msbuild.binlog
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ================================
+# Swift/Objective-C
+# ================================
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+/*.gcno
+**/xcshareddata/WorkspaceSettings.xcsettings
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+.build/
+Pods/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# ================================
+# TypeScript
+# ================================
+*.tsbuildinfo
+
+# ================================
+# Logs & Databases
+# ================================
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+logs/
+
+# ================================
+# Package & Archive
+# ================================
+*.zip
+*.tar
+*.gz
+*.bz2
+*.xz
+*.lzma
+*.cab
+*.7z
+*.rar
+*.iso
+*.dmg
+
+# ================================
+# Sensitive & Config
+# ================================
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+.env.*
+!.env.example
+credentials.json
+secrets.yaml
+secrets.yml
+
+# ================================
+# Build & Cache
+# ================================
+.cache/
+.temp/
+.tmp/
+*.bak
+*.backup
+*.old
+*.orig
+
+# ================================
+# Documentation
+# ================================
+site/
+
+# ================================
+# Testing
+# ================================
+.nyc_output/
+libpeerconnection.log
+testem.log
+test-results/
+
+# ================================
+# Misc
+# ================================
+*.pid
+*.seed
+*.pid.lock
+.npm
+.eslintcache
+.stylelintcache
+.node_repl_history
+*.tgz
+.yarn-integrity

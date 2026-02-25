@@ -1,0 +1,202 @@
+=== KEY POINTS LIST ===
+
+[Keywords]
+- Linter (代码检查工具)
+- Agent (AI 智能体)
+- Claude Code
+- Hooks (生命周期钩子)
+- BaseRule (规则基类接口)
+- AgentLinterEngine (Linter 引擎)
+- AST (抽象语法树)
+- PreToolUse / PostToolUse (工具执行前后钩子)
+- 刚性法律规则 (Hard constraints)
+- 标注循环 (Annotation loop)
+- 阶段门控 (Phase gates)
+- 共享可变文档 (Shared mutable documents)
+- research.md / plan.md / code_review.md (三件套状态文件)
+- Task 文件夹隔离
+- Tree-sitter (多语言解析器)
+- Validator Subagent (验证子 Agent)
+- 接口保护 (Interface protection)
+- 果断 revert (Decisive revert)
+- i18n (国际化)
+- trace_id (追踪 ID)
+- 模块隔离 (Module isolation)
+- 三层规则体系 (语法/安全/业务)
+- Why-First Nomos Flow (为什么优先刚性流程)
+- project-why.md (项目知识库)
+- Socratic questioning (苏格拉底式提问)
+- Targeted scan (定向扫描)
+- SKILL marketplace (技能市场)
+- Auto-branch creation (自动分支创建)
+- Mermaid diagram (流程图生成)
+- Test-First / TDD (测试驱动开发)
+- 失败学习闭环 (Failure learning loop)
+- PR auto-generation (PR 自动生成)
+- Parallel tasks (并行任务)
+- Achievement system (成就系统)
+- Human-Agent division (人机分工)
+- Sub-skills (子技能)
+- /nomos:update-why (project-why.md 更新子技能)
+- /nomos:validate (Validator Subagent 审查子技能)
+- 审查机制 (Review mechanism)
+- 标注机制 (Annotation mechanism)
+- Review Comments (审查批注格式)
+- 严重程度标记 (Severity tags: CRITICAL/MAJOR/MINOR/SUGGEST)
+- 标注循环 (Annotation loop)
+- 审查阶段 (Review phases)
+- 标注阶段 (Annotation phases)
+- 前置 Review (Pre-code review)
+- 标注即拦截 (Annotation as interception)
+- 块级标注 (Block-level annotation)
+- 双视图切换 (Dual view switching)
+- 标注状态体系 (Annotation state system)
+- 标注历史持久化 (Annotation history persistence)
+- Gate Commit (门控提交)
+- Commit Message 规范 (Commit message convention)
+
+[New Concepts]
+- **刚性编码 Agent 流程**: 将 Linter 从"建议"转向"准入检查",作为 Agent 生成代码的物理定律,未通过则触发自我修复循环
+- **三层 Linter 规则体系**: 第一层(语法/工程规范)、第二层(安全/风险管控)、第三层(业务逻辑/架构契约),层层递进的代码质量管控
+- **插件化流水线模式**: BaseRule 标准接口 + AgentLinterEngine 核心引擎,用户可"搭积木"式添加自定义规则
+- **共享 MD 状态机**: 用 research.md/plan.md/code_review.md 作为持久化状态载体,替代对话记忆,支持标注循环
+- **标注循环前置 review**: 在文档里直接批注而非聊天,把 code review 前置到写代码之前,Claude 看到完整上下文不丢失信息
+- **Hooks 物理门控**: PreToolUse/PostToolUse/Stop 等生命周期事件作为硬中断点,exit 2 物理阻塞 + 错误直接喂回 Agent
+- **Task 文件夹隔离**: 每个迭代独立文件夹(tasks/t1-YYYY-MM-DD-feature/),避免需求串扰,支持并行开发
+- **Builder + Validator 双轨制**: 主 Agent 负责创造性工作,Validator 子 Agent 只读审查,形成分工协作
+- **Command + Prompt + Agent 混合 Handler**: 静态检查(Command) + 语义判断(Prompt/LLM) + 深度验证(Subagent),三层递进拦截
+- **动态规则注入**: 从 plan.md 读取本次迭代特定规则(如 i18n 要求),实现"标注即拦截"
+- **Why-First Nomos Flow**: 在每个任务开始前,通过苏格拉底式提问(5-12 个问题)强制 Agent 深度思考"为什么",累积到 project-why.md 作为项目知识库
+- **project-why.md 知识库**: 跨任务累积的项目知识库,记录所有"为什么"的答案,避免重复提问,形成项目智慧沉淀
+- **定向扫描 Why 问题**: 不是通用提问,而是针对当前任务上下文生成 5-12 个精准的"为什么"问题,避免问题泛滥
+- **SKILL + Hooks 架构**: 将刚性流程封装为 SKILL(如 /nomos),通过 Hooks 自动触发,用户一键调用完整工作流
+- **Marketplace 模式**: 主 SKILL 可调用子 SKILL(如 /nomos:update-why、/nomos:validate),形成可组合的技能市场
+- **Mermaid 图自动生成**: Agent 在 plan.md 中自动生成 Mermaid 流程图/架构图,可视化设计方案,人类一目了然
+- **Test-First 强制执行**: PreToolUse Hook 检查是否先写测试,未写测试则阻塞代码生成,强制 TDD
+- **失败学习闭环**: 每次 Linter 失败、测试失败、revert 都记录到 project-why.md,形成"失败知识库",避免重复犯错
+- **PR 自动生成**: 任务完成后,Hook 自动生成 PR 描述(基于 plan.md + code_review.md),一键提交
+- **并行任务支持**: 通过独立 task 文件夹 + 分支切换,支持多个任务开发,互不干扰
+- **成就系统**: 记录 Agent 的"成就"(如连续 10 次 Linter 通过、零 revert 完成任务),gamification 提升体验
+- **自动分支创建**: 任务创建时自动创建 feature 分支,任务完成后自动合并或清理
+- **人机分工明确化**: 人类负责"为什么"(Why)和高阶决策,Agent 负责"怎么做"(How)和执行细节,各司其职
+- **混合任务恢复机制**: SessionStart 轻量级提示 + UserPromptSubmit 智能检测 + 显式切换命令,兼顾自动化和可控性
+- **current-task.txt 状态文件**: 记录当前活跃任务路径,支持会话重启后自动恢复上下文
+- **按需上下文注入**: 只在明确需要时才注入完整任务文档,避免 SessionStart 盲目加载导致上下文污染
+- **诚实追问机制**: Agent 在标注循环中遇到不理解的批注时,诚实地提问澄清而非自以为是地迎合用户,确保真正的理解对齐
+- **project-why.md 智能维护**: 更新时先回顾已有内容,与用户沟通对齐,进行相似检测、合并、补充和增强,是知识库演进而非日志追加
+- **Task Viewer HTML 界面**: 基于 HTML+CSS+Pure JS 的任务查看器,集成 Markdown/Mermaid 渲染和标注功能,无需 IDE 即可查看和标注
+- **短 ID 映射系统**: 使用短 ID(t1,t2...)简化任务引用,目录名称包含短 ID 确保可见性,支持模糊匹配
+- **自动关闭服务器**: Python 后端服务器支持超时自动关闭和浏览器关闭通知,避免资源占用
+- **动态端口分配**: 支持同时打开多个任务查看器,自动分配可用端口避免冲突
+- **标注格式统一**: Task Viewer 标注格式与现有 Review Comments 格式一致,确保兼容性
+- **三层 Linter 审查流程**: PreToolUse 触发 → 第一层语法检查 → 第二层安全检查 → 第三层业务检查 → 通过才允许写入
+- **审查点分布**: Research 后(Validator 审查) → Plan 后(Validator 审查) → PreToolUse(Linter) → Stop(Phase Gates)
+- **标注严重程度体系**: [CRITICAL] 阻塞+可能 revert、[MAJOR] 阻塞、[MINOR]/[SUGGEST] 不阻塞、[REVERT] 自动回滚
+- **标注三阶段**: Research→Plan(标注 research.md) → Plan→Execute(标注 plan.md) → Execute→Complete(标注 code_review.md)
+- **审查 vs 标注分工**: 审查由系统执行(刚性约束),标注由人类执行(软性指导),各司其职
+- **标注循环价值**: 前置 Review(写代码前发现问题)、上下文不丢失(永久保存)、Agent 自我修复(自动修改)
+- **标注→审查→Revert 联动**: 人类标注 [CRITICAL]/[REVERT] → Validator 检测 → Revert Manager 执行 → 回到 Plan 阶段
+- **标注交互设计**: 右键点击行创建新标注，左键点击标记点查看历史/追问/状态
+- **标注历史持久化**: 每个标注包含完整的历史线程（用户标注→Agent回复→AI追问→用户澄清）
+- **标注状态体系**: pending/pending_ai_question/pending_user_clarify/addressed/wont_fix 五种状态
+- **内容动态刷新**: WebSocket + 轮询混合，Agent 修改后 Task Viewer 自动刷新，保留标注框状态
+- **触发机制手动命令**: 人类在 CLI 输入"继续"或"处理标注"触发 Agent 处理标注
+- **AI 诚实追问**: Agent 不理解时在标注历史中追加 ❓ 提问，状态改为 pending_ai_question
+- **Markdown 特殊格式标注**: 双视图切换 + 块级标注混合方案，代码块/Mermaid/表格各有专门标注方式
+- **代码块标注**: 块级定位 (block_index + inner_line) + 源码行号兜底
+- **Mermaid 标注**: 整图块级定位，点击图表上方标记点
+- **源码视图切换**: 渲染视图无法精确定位时切换到源码视图标注
+- **分支自动创建**: /nomos:start 或 /nomos:new-task 时自动创建 feature 分支
+- **分支命名规范**: {type}/{date}-{task-name} 格式，如 feat/2026-02-25-user-login
+- **Gate Commit 自动化**: 每个 Gate 完成后自动 commit，message 包含 #gate-X.Y 标记
+- **Commit Message 生成**: 根据Gate信息自动生成，格式: <type>(<scope>): <desc> #gate-X.Y
+- **PR 自动生成**: 从 plan.md 提取 Summary/Changes，从 code_review.md 提取 Test Plan/Checklist
+- **PR 触发方式**: 任务完成后手动 `/nomos:pr`，或配置 auto_pr_on_complete 自动触发
+
+[Decision Points]
+- **放弃第三层通用化**: 第三层业务规则因场景差异大而难以标准化,决定只做第一二层 MVP + 提供可扩展框架
+- **选择 Task 文件夹隔离**: 明确采用 tasks/{task-folder}/ 组织方式,而非单文件+归档,避免需求串扰
+- **绑定 Claude Code 生态**: 明确绑定在 Claude Code 上,充分利用 Hooks 机制,不追求通用性,确保最佳性能和可靠性
+- **Tree-sitter 作为多语言后端**: Python ast 只支持 Python,决定用 Tree-sitter 统一处理多语言 AST 解析
+- **PreToolUse 作为主拦截点**: 在代码写入文件前拦截(PreToolUse),比 PostToolUse 更刚性,代码根本不会落地
+- **三件套标准模板**: 确定 research.md/plan.md/code_review.md 作为标准状态文件,YAML Frontmatter + Review Comments 结构
+- **Prompt Handler 处理语义规则**: 对于需要语义理解的规则(如 i18n、logger),用 Prompt Handler 调用 Haiku 单轮判断
+- **果断 revert 优于增量 patch**: 方向错了直接 git revert + 更新 plan.md 状态,不在错误基础上打补丁
+- **Revert 触发条件明确**: L3/L4 严重违规(critical)、Validator Subagent 发现架构冲突、人类批注 [REVERT] 标记、测试大面积失败(>30%)
+- **Revert 记录完整追溯**: 所有 Revert 操作记录在 code_review.md 第 6 节,包含原因、范围、结果、教训
+- **Revert 后回到 Plan 阶段**: 代码回滚但保留 research.md,Agent 重新设计方案,不会重复犯错
+- **Why-First 作为前置阶段**: 在 Research 之前增加 Why-First 阶段,强制思考"为什么",避免"想当然"
+- **定向扫描而非通用提问**: Why 问题不是固定模板,而是根据任务上下文动态生成 5-12 个精准问题
+- **project-why.md 作为累积知识库**: 不是每次任务都重新提问,而是先查询 project-why.md,只问新问题
+- **SKILL 封装完整流程**: 将刚性流程封装为 /nomos SKILL,用户一键调用,降低使用门槛
+- **Marketplace 模式支持子技能**: 主 SKILL 可调用子 SKILL,形成可组合的技能生态
+- **Mermaid 图作为标准输出**: plan.md 必须包含 Mermaid 图,可视化设计方案
+- **Test-First 作为硬约束**: PreToolUse Hook 强制检查测试文件,未写测试则阻塞
+- **失败记录到 project-why.md**: 所有失败(Linter/测试/revert)都追加到 project-why.md,形成失败知识库
+- **PR 自动生成而非手动**: 任务完成后自动生成 PR 描述,减少人工工作
+- **分支切换支持多任务**: 使用 git checkout 切换分支,支持多任务开发而非并行
+- **任务创建时自动分支**: 任务创建时(Why-First 完成后)自动创建 feature 分支,而非 SessionStart
+- **混合任务恢复策略**: SessionStart 轻量级提示 + UserPromptSubmit 智能检测 + 显式 SKILL 命令,避免盲目加载
+- **current-task.txt 记录活跃任务**: 用状态文件而非 Hook 逻辑判断当前任务,简化实现
+- **按需注入避免污染**: 只在明确需要时(如"继续任务"、Plan 阶段)才注入完整文档,SessionStart 只提示
+- **诚实追问而非迎合**: Agent 在标注循环中遇到不理解的批注时,必须诚实提问而非猜测迎合,确保真正理解
+- **project-why.md 智能维护而非追加**: 更新时先回顾已有内容,进行相似检测、合并、补充和增强,而非简单追加
+- **Task Viewer 作为唯一查看方式**: 使用 Task Viewer HTML 界面查看和标注,支持 Markdown/Mermaid 自动渲染
+- **短 ID 在目录名中可见**: 目录名格式为 tasks/t1-YYYY-MM-DD-feature/,短 ID 直接可见,无需查询映射文件
+- **服务器自动关闭避免资源浪费**: 超时 30 分钟或浏览器关闭时自动关闭服务器,避免后台进程占用资源
+- **审查与标注分离**: 系统审查处理刚性约束(语法/安全/架构),人类标注处理软性指导(方向/细节/偏好)
+- **标注严重程度四级**: CRITICAL/MAJOR/MINOR/SUGGEST 对应不同阻塞级别和处理方式
+- **标注循环三阶段**: Research→Plan→Execute 各有独立标注文件和位置,逐一通过才进入下一阶段
+- **触发机制选择方案A**: 手动命令"继续"/"处理标注"，而非自动检测或 Task Viewer 按钮
+- **右键创建左键查看**: 右键点击行创建新标注，左键点击标记点查看历史，区分两种操作
+- **标注历史线程持久化**: 所有标注对话保存在 MD 文件中，支持版本控制和跨会话保持
+- **AI追问特殊状态**: pending_ai_question 状态 + 紫色闪烁图标，确保用户不遗漏
+- **内容动态刷新不重开**: WebSocket + 轮询自动刷新，保留打开的标注框状态
+- **特殊格式标注混合方案**: 双视图切换 + 块级标注，代码块用块内行号，Mermaid 用整图定位
+- **源码行号兜底机制**: 所有标注都记录 source_line，防止渲染后行号漂移
+- **Gate Commit 粒度**: 每个 Gate 完成后自动 commit，而非 Phase 完成后，便于精确 revert
+- **PR 手动触发优于自动**: 默认手动 `/nomos:pr`，避免未完成代码意外提交
+- **Commit Message 绑定 Gate**: message 中包含 #gate-X.Y 标记，与 plan.md 一一对应
+
+[Question Points]
+- **如何与现有 Agent 框架集成**: 这个 Linter Engine 是封装为 Tool/Function Call,还是作为底层生命周期中间件?
+- **第三层规则如何配置**: 用 YAML 配置还是纯代码?如何平衡灵活性和易用性?
+- **多语言项目如何统一管理**: 不同语言的 Linter 规则如何协调?是否需要语言级别的配置隔离?
+- **子 Agent 审查 checklist 如何设计**: Validator Subagent 的审查标准如何标准化?
+- **如何处理 Linter 误报**: 如果静态检查误判,如何提供人工覆盖机制?
+- **跨文件依赖如何检查**: 如 trace_id 在调用链传递,单文件 AST 无法验证,需要 Agent Handler 深度检查?
+- **归档策略**: 完成的 task 文件夹何时归档?是否需要自动化?
+- **性能优化**: 大型项目中,每次 Write 都跑完整 Linter 是否会太慢?如何增量检查?
+- **Why 问题如何生成**: 定向扫描的 5-12 个问题如何动态生成?是否需要专门的 Prompt 模板?
+- **project-why.md 如何查询**: 如何高效检索已有的"为什么"答案?是否需要向量搜索或标签系统?
+- **Why-First 阶段如何强制**: 如何确保 Agent 不跳过 Why-First 阶段?是否需要专门的 Phase Gate?
+- **SKILL 如何调用子 SKILL**: Marketplace 模式的技术实现?是否需要 SKILL 注册表?
+- **Mermaid 图如何验证**: 如何确保生成的 Mermaid 图语法正确且有意义?
+- **Test-First 如何判断**: 如何识别"测试文件"?是否需要命名约定(如 test_*.py)?
+- **失败知识库如何利用**: project-why.md 中的失败记录如何在后续任务中自动应用?
+- **PR 描述如何生成**: 自动生成的 PR 描述格式?是否需要模板?
+- **任务切换如何协调**: 切换分支时如何确保上下文正确加载?是否需要清理旧任务上下文?
+- **成就系统如何实现**: 成就数据存储在哪里?如何展示?
+- **自动分支命名规范**: 分支名称如何生成?是否需要与 task-id 关联?
+- **UserPromptSubmit 如何智能检测**: 如何准确识别任务切换意图?是否需要 Agent Handler?
+- **current-task.txt 何时更新**: 任务创建、切换、完成时如何自动维护此文件?
+- **任务列表如何展示**: /nomos:list-tasks 如何高效列出所有任务?是否需要缓存?
+- **任务切换时如何清理**: 切换任务时,旧任务的上下文如何清理?是否需要显式清理命令?
+- **诚实追问的边界**: Agent 如何判断何时应该追问?追问多少次合适?如何避免过度追问?
+- **project-why.md 相似检测算法**: 如何判断两个问题/答案是否相似?是否需要语义相似度计算?
+- **知识合并的冲突处理**: 如果新旧知识存在冲突,如何与用户沟通解决?
+- **project-why.md 的结构化**: 随着内容增长,如何组织结构(分类/标签/层级)?
+- **标注行号漂移问题**: 文档修改后行号可能变化,如何保持标注定位准确?
+- **标注冲突处理**: 多人同时标注同一位置如何处理?
+- **审查 Checklist 如何维护**: Validator Subagent 的审查清单如何随项目演进?
+- **标注转规则机制**: 重复出现的标注是否应该自动转化为 Linter 规则?
+- **标注行号漂移处理**: 文档修改后行号变化，如何保持标注定位准确？是否需要相对定位？
+- **多标注并行处理**: Agent 一次处理多个标注时，如何保证顺序和依赖关系？
+- **标注历史过长**: 标注历史线程过长时如何折叠或分页显示？
+- **AI追问优先级**: 多个 AI 追问同时存在时，如何提示用户处理顺序？
+- **Commit 粒度强制策略**: 如何确保 Agent 按 Gate 粒度 commit 而不是整个 Phase 完成后一次 commit？
+- **Commit Message 自动生成准确性**: 如何确保生成的 commit message 准确描述变更内容？
+- **Gate 与 Commit 一致性**: 如果 Gate 需要拆分或合并，如何处理对应的 commit？
+- **PR 描述质量**: 自动生成的 PR 描述如何确保包含关键信息和上下文？
+- **分支命名冲突**: 多个同名任务如何避免分支命名冲突？是否需要追加序号？
+- **Revert 后 Commit 历史**: Revert 后 commit 历史如何处理？是否需要 squash？
