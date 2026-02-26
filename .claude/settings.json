@@ -43,7 +43,7 @@
     ]
   },
   "nomos": {
-    "version": "1.0.0",
+    "version": "0.1.1",
     "taskViewer": {
       "enabled": true,
       "port": 8765,

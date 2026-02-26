@@ -1,7 +1,7 @@
 ---
 name: nomos
 description: Agent 刚性工作流管理
-version: 0.1.0
+version: 0.1.1
 commands:
   - name: start
     description: 启动新任务的刚性工作流
@@ -33,6 +33,13 @@ commands:
   - name: clarify
     description: 轻量级需求澄清对话（不创建任务）
     args: ""
+  - name: update-version
+    description: 更新 N0mosAi 版本号（修改所有版本文件）
+    args: "<version>"
+    files:
+      - ".claude/settings.json → nomos.version"
+      - ".claude/skills/nomos/SKILL.md → version"
+      - ".claude/hooks/lib/__init__.py → __version__"
 ---
 
 # /nomos
@@ -53,6 +60,7 @@ Agent 刚性工作流管理工具。通过 Hooks 物理门控确保代码质量�
 | `/nomos:pr [--draft]` | 生成 Pull Request |
 | `/nomos:archive <task_id>` | 归档已完成任务 |
 | `/nomos:clarify` | 轻量级需求澄清对话（不创建任务） |
+| `/nomos:update-version <version>` | 更新 N0mosAi 版本号 |
 
 ## 核心理念
 
