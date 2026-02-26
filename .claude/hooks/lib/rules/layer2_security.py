@@ -5,9 +5,46 @@
 import subprocess
 import json
 import os
+import sys
 from typing import List
 from .base_rule import BaseRule, RuleViolation, Severity
 from ..utils import create_temp_file
+
+
+def _get_venv_bin_path():
+    """获取虚拟环境 bin 目录路径"""
+    # 方法1: 从当前 Python 可执行文件推断
+    python_bin = sys.executable
+    if 'site-packages' in python_bin or '.venv' in python_bin or 'venv' in python_bin:
+        return os.path.dirname(python_bin)
+
+    # 方法2: 查找项目根目录下的 .venv
+    cwd = os.getcwd()
+    venv_path = os.path.join(cwd, '.venv', 'bin')
+    if os.path.exists(venv_path):
+        return venv_path
+
+    # 方法3: 向上查找
+    parent = cwd
+    for _ in range(5):
+        venv_path = os.path.join(parent, '.venv', 'bin')
+        if os.path.exists(venv_path):
+            return venv_path
+        parent = os.path.dirname(parent)
+        if parent == '/':
+            break
+
+    return None
+
+
+def _find_executable(name: str) -> str:
+    """查找可执行文件路径，优先使用虚拟环境中的"""
+    venv_bin = _get_venv_bin_path()
+    if venv_bin:
+        venv_exe = os.path.join(venv_bin, name)
+        if os.path.exists(venv_exe):
+            return venv_exe
+    return name  # 回退到系统 PATH
 
 
 class BanditRule(BaseRule):
@@ -37,9 +74,12 @@ class BanditRule(BaseRule):
         """
         violations = []
 
+        # 查找 bandit 可执行文件
+        bandit_exe = _find_executable("bandit")
+
         # 检查 bandit 是否可用
         try:
-            subprocess.run(["bandit", "--version"], capture_output=True, check=True)
+            subprocess.run([bandit_exe, "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             return [RuleViolation(
                 rule="bandit:not_found",
@@ -57,7 +97,7 @@ class BanditRule(BaseRule):
         try:
             # 运行 bandit
             result = subprocess.run(
-                ["bandit", "-f", "json", "-ll", temp_file],
+                [bandit_exe, "-f", "json", "-ll", temp_file],
                 capture_output=True,
                 text=True
             )

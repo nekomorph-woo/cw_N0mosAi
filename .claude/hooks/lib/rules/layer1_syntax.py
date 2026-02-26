@@ -5,9 +5,46 @@
 import subprocess
 import json
 import os
+import sys
 from typing import List
 from .base_rule import BaseRule, RuleViolation, Severity
 from ..utils import create_temp_file
+
+
+def _get_venv_bin_path():
+    """获取虚拟环境 bin 目录路径"""
+    # 方法1: 从当前 Python 可执行文件推断
+    python_bin = sys.executable
+    if 'site-packages' in python_bin or '.venv' in python_bin or 'venv' in python_bin:
+        return os.path.dirname(python_bin)
+
+    # 方法2: 查找项目根目录下的 .venv
+    cwd = os.getcwd()
+    venv_path = os.path.join(cwd, '.venv', 'bin')
+    if os.path.exists(venv_path):
+        return venv_path
+
+    # 方法3: 向上查找
+    parent = cwd
+    for _ in range(5):
+        venv_path = os.path.join(parent, '.venv', 'bin')
+        if os.path.exists(venv_path):
+            return venv_path
+        parent = os.path.dirname(parent)
+        if parent == '/':
+            break
+
+    return None
+
+
+def _find_executable(name: str) -> str:
+    """查找可执行文件路径，优先使用虚拟环境中的"""
+    venv_bin = _get_venv_bin_path()
+    if venv_bin:
+        venv_exe = os.path.join(venv_bin, name)
+        if os.path.exists(venv_exe):
+            return venv_exe
+    return name  # 回退到系统 PATH
 
 
 class RuffRule(BaseRule):
@@ -30,9 +67,12 @@ class RuffRule(BaseRule):
         """
         violations = []
 
+        # 查找 ruff 可执行文件
+        ruff_exe = _find_executable("ruff")
+
         # 检查 ruff 是否可用
         try:
-            subprocess.run(["ruff", "--version"], capture_output=True, check=True)
+            subprocess.run([ruff_exe, "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             return [RuleViolation(
                 rule="ruff:not_found",
@@ -50,7 +90,7 @@ class RuffRule(BaseRule):
         try:
             # 运行 ruff check
             result = subprocess.run(
-                ["ruff", "check", "--output-format=json", temp_file],
+                [ruff_exe, "check", "--output-format=json", temp_file],
                 capture_output=True,
                 text=True
             )
