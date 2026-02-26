@@ -64,7 +64,7 @@ why_engine.add_knowledge(
 
 **输出**: 完整的 research.md
 
-### 3. 等待人类审阅 Research
+### 4. 等待人类审阅 Research
 
 **提示用户**:
 ```
@@ -83,7 +83,7 @@ why_engine.add_knowledge(
 - 逐条回复，标记为 `addressed`
 - 如果有 CRITICAL/MAJOR 未处理，不能进入下一阶段
 
-### 4. Plan 阶段
+### 5. Plan 阶段
 
 **目标**: 设计实施方案
 
@@ -107,7 +107,7 @@ why_engine.add_knowledge(
 
 **输出**: 完整的 plan.md
 
-### 5. 等待人类审阅 Plan
+### 6. 等待人类审阅 Plan
 
 **提示用户**:
 ```
@@ -121,7 +121,7 @@ why_engine.add_knowledge(
 完成审阅后，告诉我继续。
 ```
 
-### 6. Execute 阶段
+### 7. Execute 阶段
 
 **目标**: 按 Phase Gates 逐步实现
 
