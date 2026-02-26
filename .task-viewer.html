@@ -486,6 +486,29 @@
             color: var(--text-secondary);
             margin-top: 8px;
         }
+
+        /* ========== 动画 ========== */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -566,7 +589,10 @@
             currentView: 'rendered',
             annotations: {},
             selectedText: null,
-            selectedRange: null
+            selectedRange: null,
+            autoRefresh: true,
+            refreshInterval: null,
+            lastModified: {}
         };
 
         // ========== 初始化 ==========
@@ -591,6 +617,9 @@
 
             // 绑定事件
             bindEvents();
+
+            // 启动自动刷新
+            startAutoRefresh();
         }
 
         // ========== 加载任务数据 ==========
@@ -739,6 +768,73 @@
 
             // 标注点击
             document.getElementById('renderedView').addEventListener('click', handleAnnotationClick);
+        }
+
+        // ========== 自动刷新 ==========
+        function startAutoRefresh() {
+            if (state.refreshInterval) {
+                clearInterval(state.refreshInterval);
+            }
+
+            // 每 5 秒检查一次文件更新
+            state.refreshInterval = setInterval(async () => {
+                if (state.autoRefresh && state.currentFile) {
+                    await checkFileUpdate();
+                }
+            }, 5000);
+        }
+
+        async function checkFileUpdate() {
+            try {
+                const response = await fetch(`/api/file?name=${encodeURIComponent(state.currentFile)}`);
+                if (!response.ok) return;
+
+                const content = await response.text();
+                const currentContent = state.taskData.files[state.currentFile];
+
+                // 检查内容是否变化
+                if (content !== currentContent) {
+                    console.log('File updated, refreshing...');
+                    state.taskData.files[state.currentFile] = content;
+                    await renderContent();
+
+                    // 显示更新提示
+                    showUpdateNotification();
+                }
+            } catch (error) {
+                console.error('Error checking file update:', error);
+            }
+        }
+
+        function showUpdateNotification() {
+            // 创建临时通知
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--success-color);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 6px;
+                box-shadow: var(--shadow-lg);
+                z-index: 2000;
+                animation: slideIn 0.3s ease-out;
+            `;
+            notification.textContent = '✅ 内容已更新';
+
+            document.body.appendChild(notification);
+
+            // 3 秒后移除
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        function toggleAutoRefresh() {
+            state.autoRefresh = !state.autoRefresh;
+            console.log('Auto refresh:', state.autoRefresh ? 'enabled' : 'disabled');
         }
 
         // ========== 工具函数 ==========
