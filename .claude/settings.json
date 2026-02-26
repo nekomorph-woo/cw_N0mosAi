@@ -43,7 +43,7 @@
     ]
   },
   "nomos": {
-    "version": "0.1.1",
+    "version": "0.1.2",
     "taskViewer": {
       "enabled": true,
       "port": 8765,
@@ -55,11 +55,16 @@
       "layers": {
         "layer1": {
           "enabled": true,
-          "rules": ["ruff", "eslint"]
+          "rules": [
+            "ruff",
+            "eslint"
+          ]
         },
         "layer2": {
           "enabled": true,
-          "rules": ["bandit"]
+          "rules": [
+            "bandit"
+          ]
         },
         "layer3": {
           "enabled": true,
