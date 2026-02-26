@@ -53,8 +53,27 @@ echo ""
 echo -e "${YELLOW}[4/5] 安装 Python 依赖...${NC}"
 if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
     pip install --upgrade pip --quiet
-    pip install -r "$PROJECT_ROOT/requirements.txt" --quiet
-    echo -e "${GREEN}✓ 依赖安装完成${NC}"
+
+    # 尝试多种安装方式
+    echo "  尝试使用清华镜像源..."
+    if pip install -r "$PROJECT_ROOT/requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet 2>/dev/null; then
+        echo -e "${GREEN}✓ 依赖安装完成 (清华镜像)${NC}"
+    else
+        echo "  清华镜像失败，尝试信任主机..."
+        if pip install -r "$PROJECT_ROOT/requirements.txt" --trusted-host pypi.org --trusted-host files.pythonhosted.org --quiet 2>/dev/null; then
+            echo -e "${GREEN}✓ 依赖安装完成 (信任主机)${NC}"
+        else
+            echo "  信任主机失败，尝试阿里云镜像..."
+            if pip install -r "$PROJECT_ROOT/requirements.txt" -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --quiet 2>/dev/null; then
+                echo -e "${GREEN}✓ 依赖安装完成 (阿里云镜像)${NC}"
+            else
+                echo -e "${RED}✗ 依赖安装失败，请检查网络连接${NC}"
+                echo -e "${YELLOW}  你可以手动运行以下命令尝试安装:${NC}"
+                echo "  pip install pyyaml ruff bandit -i https://pypi.tuna.tsinghua.edu.cn/simple"
+                exit 1
+            fi
+        fi
+    fi
 else
     echo -e "${RED}✗ 找不到 requirements.txt${NC}"
     exit 1
