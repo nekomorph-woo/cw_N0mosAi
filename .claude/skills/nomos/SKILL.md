@@ -30,6 +30,9 @@ commands:
   - name: archive
     description: 归档已完成任务
     args: "<task_id>"
+  - name: clarify
+    description: 轻量级需求澄清对话（不创建任务）
+    args: ""
 ---
 
 # /nomos
@@ -49,6 +52,7 @@ Agent 刚性工作流管理工具。通过 Hooks 物理门控确保代码质量�
 | `/nomos:update-why` | 更新和维护 project-why.md 知识库 |
 | `/nomos:pr [--draft]` | 生成 Pull Request |
 | `/nomos:archive <task_id>` | 归档已完成任务 |
+| `/nomos:clarify` | 轻量级需求澄清对话（不创建任务） |
 
 ## 核心理念
 
