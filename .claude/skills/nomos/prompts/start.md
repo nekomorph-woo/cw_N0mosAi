@@ -21,7 +21,37 @@ task = tm.create_task("任务名", "feat")  # 或 fix/refactor/test/docs
 - 初始化四件套: research.md, plan.md, code_review.md, progress.md
 - 更新 current-task.txt 和 short-id-mapping.json
 
-### 2. Research 阶段
+### 2. Why-First 阶段（可选但推荐）
+
+**目标**: 深度思考任务的本质和价值
+
+**步骤**:
+1. 使用 WhyFirstEngine 生成 Why 问题：
+```python
+from lib.why_first_engine import WhyFirstEngine
+
+why_engine = WhyFirstEngine()
+questions = why_engine.generate_why_questions("任务名", "任务描述")
+```
+
+2. 在 research.md 的 "Why Questions" 部分回答这些问题
+3. 将重要的决策和教训添加到 project-why.md：
+```python
+why_engine.add_knowledge(
+    category="架构决策",  # 或 核心理念/经验教训/常见问题
+    title="决策标题",
+    content="决策内容和理由"
+)
+```
+
+**Why Questions 示例**:
+- 为什么需要这个功能？（核心动机）
+- 为什么现在做？（时机选择）
+- 为什么选择这种方案？（方案选择）
+- 为什么不用其他方案？（替代方案分析）
+- 核心价值是什么？（价值主张）
+
+### 3. Research 阶段
 
 **目标**: 深入理解需求，调研相关代码
 
