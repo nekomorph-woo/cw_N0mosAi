@@ -3,25 +3,42 @@
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
-        "hooks": [".claude/hooks/nomos-pretooluse.sh"]
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/nomos-pretooluse.sh"
+          }
+        ]
       }
     ],
     "Stop": [
       {
-        "matcher": "",
-        "hooks": [".claude/hooks/nomos-stop.sh"]
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/nomos-stop.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [
       {
-        "matcher": "",
-        "hooks": [".claude/hooks/nomos-session-start.sh"]
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/nomos-session-start.sh"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
       {
-        "matcher": "",
-        "hooks": [".claude/hooks/nomos-userpromptsubmit.sh"]
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/nomos-userpromptsubmit.sh"
+          }
+        ]
       }
     ]
   },
