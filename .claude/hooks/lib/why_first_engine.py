@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+from difflib import SequenceMatcher
 
 
 class WhyFirstEngine:
@@ -203,3 +204,109 @@ class WhyFirstEngine:
             results[section] = section in research_content
 
         return results
+
+    def detect_similar_knowledge(self, new_content: str, threshold: float = 0.7) -> List[Dict[str, any]]:
+        """
+        检测相似的知识条目
+
+        Args:
+            new_content: 新内容
+            threshold: 相似度阈值 (0-1)
+
+        Returns:
+            相似条目列表
+        """
+        if not self.project_why_file.exists():
+            return []
+
+        with open(self.project_why_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        similar_items = []
+        sections = re.split(r'\n### ', content)
+
+        for section in sections[1:]:
+            lines = section.split('\n', 1)
+            title = lines[0].strip()
+            body = lines[1] if len(lines) > 1 else ''
+
+            # 计算相似度
+            similarity = self._calculate_similarity(new_content, body)
+
+            if similarity >= threshold:
+                similar_items.append({
+                    'title': title,
+                    'content': body.strip(),
+                    'similarity': similarity
+                })
+
+        # 按相似度排序
+        similar_items.sort(key=lambda x: x['similarity'], reverse=True)
+
+        return similar_items
+
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """
+        计算文本相似度
+
+        Args:
+            text1: 文本1
+            text2: 文本2
+
+        Returns:
+            相似度 (0-1)
+        """
+        return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+    def suggest_merge(self, item1: Dict, item2: Dict) -> Dict[str, str]:
+        """
+        建议合并两个知识条目
+
+        Args:
+            item1: 条目1
+            item2: 条目2
+
+        Returns:
+            合并建议
+        """
+        return {
+            'merged_title': f"{item1['title']} & {item2['title']}",
+            'merged_content': f"{item1['content']}\n\n---\n\n{item2['content']}",
+            'reason': f"相似度: {item1.get('similarity', 0):.2%}"
+        }
+
+    def enhance_knowledge(self, title: str, additional_info: str) -> bool:
+        """
+        增强现有知识条目
+
+        Args:
+            title: 条目标题
+            additional_info: 额外信息
+
+        Returns:
+            是否成功
+        """
+        if not self.project_why_file.exists():
+            return False
+
+        with open(self.project_why_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # 查找条目
+        pattern = rf'### {re.escape(title)}\n\n(.*?)(?=\n### |\Z)'
+        match = re.search(pattern, content, re.DOTALL)
+
+        if not match:
+            return False
+
+        # 在条目末尾添加信息
+        old_content = match.group(0)
+        new_content = old_content.rstrip() + f"\n\n**补充** ({datetime.now().strftime('%Y-%m-%d')}):\n{additional_info}\n"
+
+        # 替换
+        updated_content = content.replace(old_content, new_content)
+
+        with open(self.project_why_file, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+
+        return True

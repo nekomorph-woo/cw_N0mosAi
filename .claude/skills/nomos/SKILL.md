@@ -21,6 +21,9 @@ commands:
   - name: validate
     description: 运行 Validator Subagent 审查文档
     args: ""
+  - name: update-why
+    description: 更新和维护 project-why.md 知识库
+    args: ""
 ---
 
 # /nomos
