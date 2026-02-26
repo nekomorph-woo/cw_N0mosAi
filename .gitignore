@@ -320,3 +320,11 @@ test-results/
 .node_repl_history
 *.tgz
 .yarn-integrity
+
+# ================================
+# N0mosAi Specific
+# ================================
+.task-viewer.html
+.claude/current-task.txt
+tasks/*/
+!tasks/short-id-mapping.json
