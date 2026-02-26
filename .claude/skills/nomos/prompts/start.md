@@ -21,7 +21,7 @@ task = tm.create_task("任务名", "feat")  # 或 fix/refactor/test/docs
 - 初始化四件套: research.md, plan.md, code_review.md, progress.md
 - 更新 current-task.txt 和 short-id-mapping.json
 
-### 2. Why-First 阶段（可选但推荐）
+### 2. Why-First 阶段（必需）
 
 **目标**: 深度思考任务的本质和价值
 
