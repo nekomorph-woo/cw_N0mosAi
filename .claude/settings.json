@@ -1,3 +1,63 @@
 {
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [".claude/hooks/nomos-pretooluse.sh"]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [".claude/hooks/nomos-stop.sh"]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [".claude/hooks/nomos-session-start.sh"]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [".claude/hooks/nomos-userpromptsubmit.sh"]
+      }
+    ]
+  },
+  "nomos": {
+    "version": "1.0.0",
+    "taskViewer": {
+      "enabled": true,
+      "port": 8765,
+      "autoRefresh": true,
+      "refreshInterval": 2000
+    },
+    "linter": {
+      "enabled": true,
+      "layers": {
+        "layer1": {
+          "enabled": true,
+          "rules": ["ruff", "eslint"]
+        },
+        "layer2": {
+          "enabled": true,
+          "rules": ["bandit"]
+        },
+        "layer3": {
+          "enabled": true,
+          "dynamicLoading": true
+        }
+      }
+    },
+    "git": {
+      "autoCommit": true,
+      "autoBranch": true,
+      "commitPrefix": "feat"
+    },
+    "annotation": {
+      "enabled": true,
+      "dataFile": ".claude/annotations.json"
+    }
+  }
 }
