@@ -203,6 +203,12 @@ Agent 容易生成"黑盒代码"(无日志、无监控),生产出问题难以追
 
 - **US-129:** 作为独立开发者,我希望任务完成后能一键生成 PR,自动从 plan.md 和 code_review.md 提取内容
 
+- **US-130:** 作为 Claude Code 用户,我希望在需求模糊时能通过 /nomos:clarify 先澄清需求,避免调研走偏浪费时
+
+- **US-131:** 作为独立开发者,我希望 clarify 只是轻量级对话,不生成文件,确认后再用 /nomos:start 正式开始
+
+- **US-132:** 作为技术 Leader,我希望 clarify 能借鉴 doc-architect 的结构化思维,帮助用户从模糊想法中提取关键词、痛点、约束
+
 ---
 
 ## 5. Functional Requirements
@@ -281,6 +287,9 @@ Agent 容易生成"黑盒代码"(无日志、无监控),生产出问题难以追
 | FR-125 | 系统应支持 commit 粒度检查,在 Stop Hook 中验证 commit 数量与 Gate 数量匹配 | P1 | ✅ 已设计 (arch 3.6.3) |
 | FR-126 | 系统应支持分支命名规范: {type}/{date}-{task-name} 格式 | P1 | ✅ 已设计 (arch 3.6.4) |
 | FR-127 | 系统应支持 PR 手动触发,通过 /nomos:pr 命令创建 | P1 | ✅ 已设计 (arch 3.6.6) |
+| FR-128 | 系统应支持 /nomos:clarify 子命令,提供轻量级需求澄清对话 | P1 | ✅ 已设计 (arch 3.6.7) |
+| FR-129 | 系统应在 clarify 中借鉴 doc-architect 的结构化思维,提取关键词、痛点、约束 | P1 | ✅ 已设计 (arch 3.6.7) |
+| FR-130 | 系统的 clarify 应不生成文件,只在控制台输出澄清报告供用户确认 | P1 | ✅ 已设计 (arch 3.6.7) |
 
 ### 5.3 Could Have Requirements
 
