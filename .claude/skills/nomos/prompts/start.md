@@ -21,7 +21,29 @@ task = tm.create_task("任务名", "feat")  # 或 fix/refactor/test/docs
 - 初始化四件套: research.md, plan.md, code_review.md, progress.md
 - 更新 current-task.txt 和 short-id-mapping.json
 
-### 2. Why-First 阶段（必需）
+### 2. 创建 Git 分支
+
+使用 GitManager 创建任务分支：
+
+```python
+from lib.git_manager import GitManager
+
+git_mgr = GitManager()
+branch_name = git_mgr.create_branch(
+    task_id=task.task_id,
+    task_name="任务名",
+    branch_type="feat"  # 或 fix/refactor/test/docs
+)
+
+print(f"✅ 已创建并切换到分支: {branch_name}")
+```
+
+**分支命名规范**: `<type>/<date>-<task-name>`
+- `feat/2026-02-26-user-login`
+- `fix/2026-02-26-auth-bug`
+- `refactor/2026-02-26-api-cleanup`
+
+### 3. Why-First 阶段（必需）
 
 **目标**: 深度思考任务的本质和价值
 
@@ -51,7 +73,7 @@ why_engine.add_knowledge(
 - 为什么不用其他方案？（替代方案分析）
 - 核心价值是什么？（价值主张）
 
-### 3. Research 阶段
+### 4. Research 阶段
 
 **目标**: 深入理解需求，调研相关代码
 
@@ -64,7 +86,7 @@ why_engine.add_knowledge(
 
 **输出**: 完整的 research.md
 
-### 4. 等待人类审阅 Research
+### 5. 等待人类审阅 Research
 
 **提示用户**:
 ```
@@ -83,7 +105,7 @@ why_engine.add_knowledge(
 - 逐条回复，标记为 `addressed`
 - 如果有 CRITICAL/MAJOR 未处理，不能进入下一阶段
 
-### 5. Plan 阶段
+### 6. Plan 阶段
 
 **目标**: 设计实施方案
 
@@ -107,7 +129,7 @@ why_engine.add_knowledge(
 
 **输出**: 完整的 plan.md
 
-### 6. 等待人类审阅 Plan
+### 7. 等待人类审阅 Plan
 
 **提示用户**:
 ```
@@ -121,7 +143,7 @@ why_engine.add_knowledge(
 完成审阅后，告诉我继续。
 ```
 
-### 7. Execute 阶段
+### 8. Execute 阶段
 
 **目标**: 按 Phase Gates 逐步实现
 
@@ -139,7 +161,7 @@ why_engine.add_knowledge(
 - 所有代码必须通过 Linter
 - Stop Hook 会检查 Gates 完成情况
 
-### 7. Review 阶段
+### 9. Review 阶段
 
 **目标**: 验证实现质量
 
@@ -166,5 +188,6 @@ why_engine.add_knowledge(
 # Agent 执行
 1. 创建 tasks/t1-2026-02-26-user-login/
 2. 初始化四件套
-3. 开始 Research 阶段...
+3. 创建 Git 分支 feat/2026-02-26-user-login
+4. 开始 Why-First 阶段...
 ```
