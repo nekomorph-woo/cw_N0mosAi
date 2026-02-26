@@ -1,0 +1,70 @@
+# N0mosAi 多语言配置文件
+# 配置文件扩展名到编程语言的映射和分语言规则集
+
+version: "1.0"
+
+# 扩展名 → 语言映射 (覆盖默认值)
+extensions:
+  ".py": python
+  ".pyi": python
+  ".js": javascript
+  ".jsx": javascript
+  ".ts": typescript
+  ".tsx": typescript
+  ".go": go
+  ".java": java
+
+# 分语言规则集配置
+rulesets:
+  python:
+    linters:
+      - name: ruff
+        enabled: true
+        config: ".ruff.toml"
+        description: "快速 Python Linter"
+      - name: bandit
+        enabled: true
+        severity: medium
+        description: "Python 安全扫描"
+
+  javascript:
+    linters:
+      - name: eslint
+        enabled: true
+        config: ".eslintrc.yml"
+        description: "JavaScript 代码质量检查"
+      - name: semgrep
+        enabled: false
+        rules: "p/javascript"
+        description: "语义代码分析"
+
+  typescript:
+    linters:
+      - name: eslint
+        enabled: true
+        config: ".eslintrc.yml"
+        description: "TypeScript 代码质量检查"
+      - name: semgrep
+        enabled: false
+        rules: "p/typescript"
+        description: "语义代码分析"
+
+  go:
+    linters:
+      - name: golangci-lint
+        enabled: false
+        config: ".golangci.yml"
+        description: "Go 综合 Linter"
+      - name: gosec
+        enabled: false
+        description: "Go 安全扫描"
+
+  java:
+    linters:
+      - name: checkstyle
+        enabled: false
+        config: "checkstyle.xml"
+        description: "Java 代码风格检查"
+      - name: spotbugs
+        enabled: false
+        description: "Java Bug 检测"
