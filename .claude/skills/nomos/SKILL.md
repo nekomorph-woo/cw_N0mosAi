@@ -18,6 +18,9 @@ commands:
   - name: view-task
     description: 查看任务详情并启动 Task Viewer
     args: "[task_id]"
+  - name: validate
+    description: 运行 Validator Subagent 审查文档
+    args: ""
 ---
 
 # /nomos
