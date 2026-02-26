@@ -46,7 +46,6 @@
     "version": "0.1.2",
     "taskViewer": {
       "enabled": true,
-      "port": 8765,
       "autoRefresh": true,
       "refreshInterval": 2000
     },
