@@ -27,7 +27,7 @@ class TaskManager:
     TASKS_DIR = "tasks"
     MAPPING_FILE = "tasks/short-id-mapping.json"
     CURRENT_TASK_FILE = ".claude/current-task.txt"
-    TEMPLATES_DIR = ".claude/templates"
+    TEMPLATES_DIR = ".claude/skills/nomos/templates"
 
     def __init__(self, project_root: Optional[str] = None):
         """
