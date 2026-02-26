@@ -12,6 +12,12 @@ commands:
   - name: new-task
     description: 创建新任务并初始化 Git 分支
     args: "<task_name> [type]"
+  - name: switch-task
+    description: 切换到另一个任务
+    args: "<task_id>"
+  - name: view-task
+    description: 查看任务详情并启动 Task Viewer
+    args: "[task_id]"
 ---
 
 # /nomos
