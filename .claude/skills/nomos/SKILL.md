@@ -24,6 +24,12 @@ commands:
   - name: update-why
     description: 更新和维护 project-why.md 知识库
     args: ""
+  - name: pr
+    description: 生成 Pull Request
+    args: "[--draft]"
+  - name: archive
+    description: 归档已完成任务
+    args: "<task_id>"
 ---
 
 # /nomos
@@ -36,6 +42,13 @@ Agent 刚性工作流管理工具。通过 Hooks 物理门控确保代码质量�
 |------|------|
 | `/nomos:start <任务名>` | 启动新任务 |
 | `/nomos:list-tasks` | 列出所有任务 |
+| `/nomos:new-task <任务名>` | 创建新任务并初始化 Git 分支 |
+| `/nomos:switch-task <task_id>` | 切换到另一个任务 |
+| `/nomos:view-task [task_id]` | 查看任务详情并启动 Task Viewer |
+| `/nomos:validate` | 运行 Validator Subagent 审查文档 |
+| `/nomos:update-why` | 更新和维护 project-why.md 知识库 |
+| `/nomos:pr [--draft]` | 生成 Pull Request |
+| `/nomos:archive <task_id>` | 归档已完成任务 |
 
 ## 核心理念
 
