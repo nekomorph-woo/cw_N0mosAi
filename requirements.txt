@@ -1,0 +1,12 @@
+# N0mosAi - Python 依赖
+
+# 核心依赖
+pyyaml>=6.0
+
+# Linter 工具 (PreToolUse Hook)
+ruff>=0.1.0
+bandit>=1.7.0
+
+# 可选：多语言支持
+# tree-sitter>=0.20.0
+# tree-sitter-languages>=1.8.0

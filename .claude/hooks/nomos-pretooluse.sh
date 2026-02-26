@@ -3,11 +3,30 @@
 
 set -e
 
+# ============================================================
+# 虚拟环境检测与激活
+# ============================================================
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$HOOK_DIR")")"
+VENV_PATH="$PROJECT_ROOT/.venv"
+
+# 如果虚拟环境存在，设置 PATH 优先使用虚拟环境中的 Python
+if [ -d "$VENV_PATH/bin" ]; then
+    export PATH="$VENV_PATH/bin:$PATH"
+    PYTHON_BIN="$VENV_PATH/bin/python3"
+else
+    PYTHON_BIN="python3"
+fi
+
+# ============================================================
+# 主逻辑
+# ============================================================
+
 # 从 stdin 读取 tool_input JSON
 TOOL_INPUT=$(cat)
 
 # 提取文件路径
-FILE_PATH=$(echo "$TOOL_INPUT" | python3 -c "
+FILE_PATH=$(echo "$TOOL_INPUT" | $PYTHON_BIN -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -31,7 +50,7 @@ case "$FILE_PATH" in
 esac
 
 # 运行 AgentLinterEngine
-RESULT=$(python3 -c "
+RESULT=$($PYTHON_BIN -c "
 import sys, json
 sys.path.insert(0, '.claude/hooks')
 
@@ -63,13 +82,13 @@ except Exception as e:
 ")
 
 # 检查结果
-PASSED=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['passed'])")
+PASSED=$(echo "$RESULT" | $PYTHON_BIN -c "import sys,json; print(json.load(sys.stdin)['passed'])")
 
 if [ "$PASSED" = "True" ]; then
   echo '{"decision": "approve"}'
 else
   # 构造拒绝消息，包含错误详情
-  echo "$RESULT" | python3 -c "
+  echo "$RESULT" | $PYTHON_BIN -c "
 import sys, json
 result = json.load(sys.stdin)
 violations = result['violations']
