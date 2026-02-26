@@ -326,5 +326,6 @@ test-results/
 # N0mosAi Specific
 # ================================
 .claude/current-task.txt
+tasks/*/.annotations/
 tasks/*/
 !tasks/short-id-mapping.json

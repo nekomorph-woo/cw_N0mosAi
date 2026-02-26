@@ -38,9 +38,24 @@ class TaskViewerHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             filename = query.get('name', [''])[0]
             self.serve_file_content(filename)
+        elif parsed_path.path == '/api/annotations':
+            # 返回标注数据
+            query = parse_qs(parsed_path.query)
+            filename = query.get('file', [''])[0]
+            self.serve_annotations(filename)
         else:
             # 静态文件
             super().do_GET()
+
+    def do_POST(self):
+        """处理 POST 请求"""
+        parsed_path = urlparse(self.path)
+
+        if parsed_path.path == '/api/annotations':
+            # 保存标注
+            self.save_annotation()
+        else:
+            self.send_error(404, "Not found")
 
     def serve_viewer_html(self):
         """返回 Task Viewer HTML 页面"""
@@ -107,6 +122,69 @@ class TaskViewerHandler(http.server.SimpleHTTPRequestHandler):
 
         with open(filepath, 'r', encoding='utf-8') as f:
             self.wfile.write(f.read().encode('utf-8'))
+
+    def serve_annotations(self, filename: str):
+        """返回标注数据"""
+        if not filename or not self.task_path:
+            self.send_error(400, "Invalid request")
+            return
+
+        annotations_file = os.path.join(self.task_path, '.annotations', f'{filename}.json')
+
+        if not os.path.exists(annotations_file):
+            # 返回空数组
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b'[]')
+            return
+
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json; charset=utf-8')
+        self.end_headers()
+
+        with open(annotations_file, 'r', encoding='utf-8') as f:
+            self.wfile.write(f.read().encode('utf-8'))
+
+    def save_annotation(self):
+        """保存标注"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            filename = data.get('file')
+            annotation = data.get('annotation')
+
+            if not filename or not annotation:
+                self.send_error(400, "Invalid data")
+                return
+
+            # 确保 .annotations 目录存在
+            annotations_dir = os.path.join(self.task_path, '.annotations')
+            os.makedirs(annotations_dir, exist_ok=True)
+
+            # 读取现有标注
+            annotations_file = os.path.join(annotations_dir, f'{filename}.json')
+            annotations = []
+            if os.path.exists(annotations_file):
+                with open(annotations_file, 'r', encoding='utf-8') as f:
+                    annotations = json.load(f)
+
+            # 添加新标注
+            annotations.append(annotation)
+
+            # 保存
+            with open(annotations_file, 'w', encoding='utf-8') as f:
+                json.dump(annotations, f, indent=2, ensure_ascii=False)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': True}).encode('utf-8'))
+
+        except Exception as e:
+            self.send_error(500, f"Error saving annotation: {str(e)}")
 
     def log_message(self, format, *args):
         """自定义日志输出"""

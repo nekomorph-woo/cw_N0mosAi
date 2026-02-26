@@ -304,6 +304,188 @@
             border-radius: 6px;
             color: var(--error-color);
         }
+
+        /* ========== 标注系统 ========== */
+        .annotation-marker {
+            background: #fef3c7;
+            border-bottom: 2px solid var(--warning-color);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .annotation-marker:hover {
+            background: #fde68a;
+        }
+
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: var(--shadow-lg);
+            padding: 4px 0;
+            z-index: 1000;
+            min-width: 180px;
+        }
+
+        .context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: var(--surface-color);
+        }
+
+        .annotation-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            padding: 24px;
+            z-index: 1001;
+            min-width: 400px;
+            max-width: 600px;
+        }
+
+        .annotation-dialog h3 {
+            margin: 0 0 16px;
+            font-size: 16px;
+        }
+
+        .annotation-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .annotation-form select,
+        .annotation-form textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .annotation-form textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .annotation-form-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-secondary {
+            background: var(--surface-color);
+            color: var(--text-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .annotation-list {
+            margin-top: 16px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 16px;
+        }
+
+        .annotation-item {
+            padding: 12px;
+            background: var(--surface-color);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .annotation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .annotation-type {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        .annotation-type.CRITICAL {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .annotation-type.MAJOR {
+            background: #fed7aa;
+            color: #9a3412;
+        }
+
+        .annotation-type.MINOR {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .annotation-type.SUGGEST {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .annotation-status {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .annotation-content {
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .annotation-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -341,12 +523,50 @@
         </div>
     </div>
 
+    <!-- 标注对话框 -->
+    <div id="annotationDialog" style="display: none;">
+        <div class="overlay" onclick="closeAnnotationDialog()"></div>
+        <div class="annotation-dialog">
+            <h3>创建标注</h3>
+            <form class="annotation-form" onsubmit="saveAnnotation(event)">
+                <label>类型</label>
+                <select id="annotationType" required>
+                    <option value="CRITICAL">CRITICAL - 致命问题</option>
+                    <option value="MAJOR">MAJOR - 严重问题</option>
+                    <option value="MINOR">MINOR - 次要问题</option>
+                    <option value="SUGGEST">SUGGEST - 建议</option>
+                </select>
+
+                <label>内容</label>
+                <textarea id="annotationContent" required placeholder="输入标注内容..."></textarea>
+
+                <div class="annotation-form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAnnotationDialog()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+
+            <div class="annotation-list" id="annotationList" style="display: none;">
+                <h4 style="font-size: 14px; margin-bottom: 12px;">历史标注</h4>
+                <div id="annotationItems"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右键菜单 -->
+    <div id="contextMenu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="createAnnotation()">📝 创建标注</div>
+    </div>
+
     <script>
         // ========== 全局状态 ==========
         const state = {
             taskData: null,
             currentFile: null,
-            currentView: 'rendered'
+            currentView: 'rendered',
+            annotations: {},
+            selectedText: null,
+            selectedRange: null
         };
 
         // ========== 初始化 ==========
@@ -427,7 +647,7 @@
         }
 
         // ========== 选择文件 ==========
-        function selectFile(filename) {
+        async function selectFile(filename) {
             state.currentFile = filename;
 
             // 更新文件列表高亮
@@ -438,8 +658,11 @@
             // 更新标题
             document.getElementById('contentTitle').textContent = filename;
 
+            // 加载标注
+            await loadAnnotations(filename);
+
             // 渲染内容
-            renderContent();
+            await renderContent();
         }
 
         // ========== 渲染内容 ==========
@@ -473,6 +696,9 @@
 
             // 源码视图
             sourceView.innerHTML = '<pre>' + escapeHtml(content) + '</pre>';
+
+            // 应用标注
+            applyAnnotations();
         }
 
         // ========== 切换视图 ==========
@@ -506,6 +732,13 @@
                     switchView(btn.dataset.view);
                 });
             });
+
+            // 右键菜单
+            document.getElementById('renderedView').addEventListener('contextmenu', handleContextMenu);
+            document.addEventListener('click', hideContextMenu);
+
+            // 标注点击
+            document.getElementById('renderedView').addEventListener('click', handleAnnotationClick);
         }
 
         // ========== 工具函数 ==========
@@ -513,6 +746,154 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // ========== 标注系统 ==========
+        async function loadAnnotations(filename) {
+            try {
+                const response = await fetch(`/api/annotations?file=${encodeURIComponent(filename)}`);
+                if (response.ok) {
+                    state.annotations[filename] = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading annotations:', error);
+            }
+        }
+
+        function handleContextMenu(e) {
+            const selection = window.getSelection();
+            if (selection.toString().trim()) {
+                e.preventDefault();
+                state.selectedText = selection.toString();
+                state.selectedRange = selection.getRangeAt(0);
+
+                const menu = document.getElementById('contextMenu');
+                menu.style.display = 'block';
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
+            }
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+        }
+
+        function createAnnotation() {
+            hideContextMenu();
+            document.getElementById('annotationDialog').style.display = 'block';
+            document.getElementById('annotationType').value = 'MAJOR';
+            document.getElementById('annotationContent').value = '';
+            document.getElementById('annotationList').style.display = 'none';
+        }
+
+        async function saveAnnotation(e) {
+            e.preventDefault();
+
+            const annotation = {
+                type: document.getElementById('annotationType').value,
+                content: document.getElementById('annotationContent').value,
+                selectedText: state.selectedText,
+                timestamp: new Date().toISOString(),
+                status: 'pending'
+            };
+
+            try {
+                const response = await fetch('/api/annotations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        file: state.currentFile,
+                        annotation: annotation
+                    })
+                });
+
+                if (response.ok) {
+                    // 重新加载标注
+                    await loadAnnotations(state.currentFile);
+                    // 重新渲染内容
+                    await renderContent();
+                    closeAnnotationDialog();
+                }
+            } catch (error) {
+                console.error('Error saving annotation:', error);
+                alert('保存标注失败');
+            }
+        }
+
+        function closeAnnotationDialog() {
+            document.getElementById('annotationDialog').style.display = 'none';
+        }
+
+        function handleAnnotationClick(e) {
+            const marker = e.target.closest('.annotation-marker');
+            if (marker) {
+                const index = parseInt(marker.dataset.index);
+                showAnnotationHistory(index);
+            }
+        }
+
+        function showAnnotationHistory(index) {
+            const annotations = state.annotations[state.currentFile] || [];
+            const annotation = annotations[index];
+
+            if (!annotation) return;
+
+            document.getElementById('annotationDialog').style.display = 'block';
+            document.getElementById('annotationType').value = annotation.type;
+            document.getElementById('annotationContent').value = annotation.content;
+
+            // 显示历史
+            const listDiv = document.getElementById('annotationList');
+            const itemsDiv = document.getElementById('annotationItems');
+
+            listDiv.style.display = 'block';
+            itemsDiv.innerHTML = `
+                <div class="annotation-item">
+                    <div class="annotation-header">
+                        <span class="annotation-type ${annotation.type}">${annotation.type}</span>
+                        <span class="annotation-status">${annotation.status}</span>
+                    </div>
+                    <div class="annotation-content">${escapeHtml(annotation.content)}</div>
+                    <div class="annotation-time">${new Date(annotation.timestamp).toLocaleString('zh-CN')}</div>
+                </div>
+            `;
+        }
+
+        function applyAnnotations() {
+            const annotations = state.annotations[state.currentFile] || [];
+            const renderedView = document.getElementById('renderedView');
+
+            annotations.forEach((annotation, index) => {
+                if (!annotation.selectedText) return;
+
+                // 查找并标记文本
+                const walker = document.createTreeWalker(
+                    renderedView,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+
+                let node;
+                while (node = walker.nextNode()) {
+                    const text = node.textContent;
+                    const idx = text.indexOf(annotation.selectedText);
+
+                    if (idx !== -1) {
+                        const range = document.createRange();
+                        range.setStart(node, idx);
+                        range.setEnd(node, idx + annotation.selectedText.length);
+
+                        const marker = document.createElement('span');
+                        marker.className = 'annotation-marker';
+                        marker.dataset.index = index;
+                        range.surroundContents(marker);
+                        break;
+                    }
+                }
+            });
         }
 
         // ========== 启动 ==========
