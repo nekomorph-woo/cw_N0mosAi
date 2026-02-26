@@ -9,6 +9,9 @@ commands:
   - name: list-tasks
     description: 列出所有任务及状态
     args: "[--status=...] [--recent=N]"
+  - name: new-task
+    description: 创建新任务并初始化 Git 分支
+    args: "<task_name> [type]"
 ---
 
 # /nomos
