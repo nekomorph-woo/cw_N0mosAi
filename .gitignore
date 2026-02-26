@@ -92,6 +92,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!.claude/hooks/lib/
 lib64/
 parts/
 sdist/
@@ -324,7 +325,6 @@ test-results/
 # ================================
 # N0mosAi Specific
 # ================================
-.task-viewer.html
 .claude/current-task.txt
 tasks/*/
 !tasks/short-id-mapping.json

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Viewer - N0mosAi</title>
+
+    <!-- CDN 引入 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+    <style>
+        /* ========== 全局样式 ========== */
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #64748b;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --bg-color: #ffffff;
+            --surface-color: #f8fafc;
+            --border-color: #e2e8f0;
+            --text-color: #1e293b;
+            --text-secondary: #64748b;
+            --code-bg: #f1f5f9;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: var(--surface-color);
+        }
+
+        /* ========== 布局 ========== */
+        .container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-color);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .task-id {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .file-item {
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-item:hover {
+            background: var(--surface-color);
+        }
+
+        .file-item.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .file-icon {
+            font-size: 16px;
+        }
+
+        .file-name {
+            flex: 1;
+            font-size: 13px;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 16px 24px;
+            background: var(--bg-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .content-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .toggle-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background: var(--surface-color);
+        }
+
+        .toggle-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        /* ========== Markdown 渲染样式 ========== */
+        .markdown-body {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .markdown-body h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 24px 0 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .markdown-body h2 {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 20px 0 12px;
+        }
+
+        .markdown-body h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 16px 0 10px;
+        }
+
+        .markdown-body p {
+            margin: 12px 0;
+        }
+
+        .markdown-body ul, .markdown-body ol {
+            margin: 12px 0;
+            padding-left: 24px;
+        }
+
+        .markdown-body li {
+            margin: 6px 0;
+        }
+
+        .markdown-body code {
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+        }
+
+        .markdown-body pre {
+            background: var(--code-bg);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        .markdown-body pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .markdown-body th, .markdown-body td {
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        .markdown-body th {
+            background: var(--surface-color);
+            font-weight: 600;
+        }
+
+        .markdown-body blockquote {
+            border-left: 4px solid var(--primary-color);
+            padding-left: 16px;
+            margin: 16px 0;
+            color: var(--text-secondary);
+        }
+
+        .markdown-body hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 24px 0;
+        }
+
+        /* ========== 源码视图 ========== */
+        .source-view {
+            display: none;
+        }
+
+        .source-view.active {
+            display: block;
+        }
+
+        .source-view pre {
+            background: var(--code-bg);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* ========== 加载状态 ========== */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ========== 错误状态 ========== */
+        .error {
+            padding: 16px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            color: var(--error-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>Task Viewer</h1>
+                <div class="task-id" id="taskId">Loading...</div>
+            </div>
+            <div class="file-list" id="fileList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <div class="content-header">
+                <div class="content-title" id="contentTitle">选择文件</div>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" data-view="rendered">渲染视图</button>
+                    <button class="toggle-btn" data-view="source">源码视图</button>
+                </div>
+            </div>
+            <div class="content-body">
+                <div class="rendered-view" id="renderedView">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+                <div class="source-view" id="sourceView"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== 全局状态 ==========
+        const state = {
+            taskData: null,
+            currentFile: null,
+            currentView: 'rendered'
+        };
+
+        // ========== 初始化 ==========
+        async function init() {
+            // 配置 marked
+            marked.setOptions({
+                gfm: true,
+                breaks: true,
+                headerIds: true,
+                mangle: false
+            });
+
+            // 配置 mermaid
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                securityLevel: 'loose'
+            });
+
+            // 加载任务数据
+            await loadTaskData();
+
+            // 绑定事件
+            bindEvents();
+        }
+
+        // ========== 加载任务数据 ==========
+        async function loadTaskData() {
+            try {
+                const response = await fetch('/api/task');
+                if (!response.ok) {
+                    throw new Error('Failed to load task data');
+                }
+
+                state.taskData = await response.json();
+
+                // 更新 UI
+                updateTaskInfo();
+                updateFileList();
+
+                // 默认显示第一个文件
+                const firstFile = Object.keys(state.taskData.files)[0];
+                if (firstFile) {
+                    selectFile(firstFile);
+                }
+            } catch (error) {
+                console.error('Error loading task data:', error);
+                document.getElementById('fileList').innerHTML =
+                    '<div class="error">加载失败: ' + error.message + '</div>';
+            }
+        }
+
+        // ========== 更新任务信息 ==========
+        function updateTaskInfo() {
+            const taskInfo = state.taskData.task_info;
+            document.getElementById('taskId').textContent =
+                taskInfo.full_id || 'Unknown Task';
+        }
+
+        // ========== 更新文件列表 ==========
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            const files = state.taskData.files;
+
+            const fileIcons = {
+                'research.md': '🔍',
+                'plan.md': '📋',
+                'code_review.md': '✅',
+                'progress.md': '📊'
+            };
+
+            fileList.innerHTML = Object.keys(files).map(filename => `
+                <div class="file-item" data-file="${filename}">
+                    <span class="file-icon">${fileIcons[filename] || '📄'}</span>
+                    <span class="file-name">${filename}</span>
+                </div>
+            `).join('');
+        }
+
+        // ========== 选择文件 ==========
+        function selectFile(filename) {
+            state.currentFile = filename;
+
+            // 更新文件列表高亮
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.file === filename);
+            });
+
+            // 更新标题
+            document.getElementById('contentTitle').textContent = filename;
+
+            // 渲染内容
+            renderContent();
+        }
+
+        // ========== 渲染内容 ==========
+        async function renderContent() {
+            const content = state.taskData.files[state.currentFile];
+            if (!content) return;
+
+            const renderedView = document.getElementById('renderedView');
+            const sourceView = document.getElementById('sourceView');
+
+            // 渲染 Markdown
+            const html = marked.parse(content);
+            renderedView.innerHTML = '<div class="markdown-body">' + html + '</div>';
+
+            // 渲染 Mermaid 图表
+            const mermaidElements = renderedView.querySelectorAll('code.language-mermaid');
+            for (let i = 0; i < mermaidElements.length; i++) {
+                const element = mermaidElements[i];
+                const code = element.textContent;
+                const id = 'mermaid-' + Date.now() + '-' + i;
+
+                try {
+                    const { svg } = await mermaid.render(id, code);
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = svg;
+                    element.parentElement.replaceWith(wrapper);
+                } catch (error) {
+                    console.error('Mermaid render error:', error);
+                }
+            }
+
+            // 源码视图
+            sourceView.innerHTML = '<pre>' + escapeHtml(content) + '</pre>';
+        }
+
+        // ========== 切换视图 ==========
+        function switchView(view) {
+            state.currentView = view;
+
+            // 更新按钮状态
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.view === view);
+            });
+
+            // 切换视图
+            document.getElementById('renderedView').style.display =
+                view === 'rendered' ? 'block' : 'none';
+            document.getElementById('sourceView').classList.toggle('active', view === 'source');
+        }
+
+        // ========== 绑定事件 ==========
+        function bindEvents() {
+            // 文件选择
+            document.getElementById('fileList').addEventListener('click', (e) => {
+                const fileItem = e.target.closest('.file-item');
+                if (fileItem) {
+                    selectFile(fileItem.dataset.file);
+                }
+            });
+
+            // 视图切换
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    switchView(btn.dataset.view);
+                });
+            });
+        }
+
+        // ========== 工具函数 ==========
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ========== 启动 ==========
+        init();
+    </script>
+</body>
+</html>
