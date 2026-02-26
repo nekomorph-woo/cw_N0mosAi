@@ -1,0 +1,26 @@
+# 模块隔离规则模板
+
+name: module_isolation
+layer: 3
+handler_type: command
+description: "检查模块间 import 是否符合隔离规则"
+
+default_config:
+  allowed_imports:
+    - "src.core"
+    - "src.utils"
+    - "src.models"
+  forbidden_imports:
+    - "src.internal"
+    - "src.deprecated"
+  check_patterns:
+    - "^from\\s+(\\S+)\\s+import"
+    - "^import\\s+(\\S+)"
+
+usage_example: |
+  # 在 plan.md 的 YAML Frontmatter 中添加:
+  custom_rules:
+    - rule: module_isolation
+      config:
+        allowed_imports: ["src.core", "src.utils"]
+        forbidden_imports: ["src.internal"]

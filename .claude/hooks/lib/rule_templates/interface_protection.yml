@@ -1,0 +1,22 @@
+# 接口保护规则模板
+
+name: interface_protection
+layer: 3
+handler_type: agent
+description: "检查 Protected Interface 签名是否被修改"
+
+default_config:
+  protected_files: []
+  protected_functions: []
+  protected_classes: []
+  check_signature: true
+  check_return_type: true
+
+usage_example: |
+  # 在 plan.md 的 YAML Frontmatter 中添加:
+  custom_rules:
+    - rule: interface_protection
+      config:
+        protected_files: ["src/core/interfaces.py"]
+        protected_functions: ["authenticate", "authorize"]
+        protected_classes: ["UserService"]
