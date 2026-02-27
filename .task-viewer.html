@@ -110,6 +110,21 @@
             font-size: 13px;
         }
 
+        .sidebar-tab {
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+        }
+
+        .sidebar-tab:hover {
+            background: var(--surface-color);
+        }
+
+        .sidebar-tab.active {
+            border-bottom-color: var(--primary-color);
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+
         /* 主内容区 */
         .main-content {
             flex: 1;
@@ -509,6 +524,184 @@
                 opacity: 0;
             }
         }
+
+        /* ========== 代码视图 ========== */
+        .code-section {
+            margin-bottom: 16px;
+        }
+
+        .code-file-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+        }
+
+        .code-file-header:hover {
+            background: var(--surface-color);
+        }
+
+        .code-file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .code-file-path {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .code-file-stats {
+            display: flex;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .code-stat-added {
+            color: var(--success-color);
+        }
+
+        .code-stat-deleted {
+            color: var(--error-color);
+        }
+
+        .code-file-toggle {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .code-content {
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            overflow: hidden;
+        }
+
+        .code-content.collapsed {
+            display: none;
+        }
+
+        .code-lines {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            background: var(--code-bg);
+        }
+
+        .code-line {
+            display: flex;
+            min-height: 22px;
+        }
+
+        .code-line:hover {
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .code-line.added {
+            background: #dcfce7;
+        }
+
+        .code-line.removed {
+            background: #fee2e2;
+        }
+
+        .code-line-num {
+            width: 50px;
+            padding: 0 8px;
+            text-align: right;
+            color: var(--text-secondary);
+            background: rgba(0, 0, 0, 0.05);
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .code-line-content {
+            flex: 1;
+            padding: 0 12px;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .code-line-annotation {
+            width: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .code-expand-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            background: var(--surface-color);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .code-expand-btn:hover {
+            background: var(--border-color);
+        }
+
+        .code-expand-btn.hidden {
+            display: none;
+        }
+
+        .annotation-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            cursor: pointer;
+        }
+
+        .annotation-dot.has-annotation {
+            background: var(--warning-color);
+            color: white;
+        }
+
+        .annotation-dot:hover {
+            transform: scale(1.2);
+        }
+
+        .code-view-container {
+            max-width: 100%;
+        }
+
+        .code-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--bg-color);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .code-toolbar-title {
+            font-weight: 600;
+        }
+
+        .code-toolbar-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -518,6 +711,11 @@
             <div class="sidebar-header">
                 <h1>Task Viewer</h1>
                 <div class="task-id" id="taskId">Loading...</div>
+            </div>
+            <!-- Tab 切换 -->
+            <div style="display: flex; border-bottom: 1px solid var(--border-color);">
+                <div class="sidebar-tab active" data-tab="docs" style="flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 13px;">📄 文档</div>
+                <div class="sidebar-tab" data-tab="code" style="flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 13px;">💻 代码</div>
             </div>
             <div class="file-list" id="fileList">
                 <div class="loading">
@@ -587,13 +785,21 @@
             taskData: null,
             currentFile: null,
             currentView: 'rendered',
+            currentTab: 'docs',  // 'docs' or 'code'
             annotations: {},
+            codeAnnotations: {},
             selectedText: null,
             selectedRange: null,
             autoRefresh: true,
             refreshInterval: null,
-            lastModified: {}
+            lastModified: {},
+            // 代码视图状态
+            codeFiles: [],
+            codeLoadedRanges: {},  // file -> [{start, end}]
+            codeExpandedFiles: {}  // file -> boolean
         };
+
+        const EXPAND_LINES = 15;  // 每次展开的行数
 
         // ========== 初始化 ==========
         async function init() {
@@ -657,6 +863,8 @@
 
         // ========== 更新文件列表 ==========
         function updateFileList() {
+            if (state.currentTab !== 'docs') return;
+
             const fileList = document.getElementById('fileList');
             const files = state.taskData.files;
 
@@ -747,11 +955,20 @@
 
         // ========== 绑定事件 ==========
         function bindEvents() {
+            // Tab 切换
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+            });
+
             // 文件选择
             document.getElementById('fileList').addEventListener('click', (e) => {
                 const fileItem = e.target.closest('.file-item');
                 if (fileItem) {
-                    selectFile(fileItem.dataset.file);
+                    if (state.currentTab === 'docs') {
+                        selectFile(fileItem.dataset.file);
+                    } else {
+                        selectCodeFile(fileItem.dataset.file);
+                    }
                 }
             });
 
@@ -768,6 +985,30 @@
 
             // 标注点击
             document.getElementById('renderedView').addEventListener('click', handleAnnotationClick);
+        }
+
+        // ========== Tab 切换 ==========
+        function switchTab(tab) {
+            state.currentTab = tab;
+
+            // 更新 Tab 高亮
+            document.querySelectorAll('.sidebar-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.tab === tab);
+            });
+
+            const viewToggle = document.querySelector('.view-toggle');
+
+            if (tab === 'docs') {
+                viewToggle.style.display = 'flex';
+                updateFileList();
+                // 恢复文档视图
+                const firstFile = Object.keys(state.taskData.files)[0];
+                if (firstFile) selectFile(firstFile);
+            } else if (tab === 'code') {
+                viewToggle.style.display = 'none';
+                document.getElementById('contentTitle').textContent = '代码变更';
+                loadCodeDiff();
+            }
         }
 
         // ========== 自动刷新 ==========
@@ -894,23 +1135,53 @@
             };
 
             try {
-                const response = await fetch('/api/annotations', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        file: state.currentFile,
-                        annotation: annotation
-                    })
-                });
+                // 检查是否是代码标注
+                if (state._codeAnnotationContext) {
+                    const { filePath, lineNum } = state._codeAnnotationContext;
+                    annotation.line = lineNum;
 
-                if (response.ok) {
-                    // 重新加载标注
-                    await loadAnnotations(state.currentFile);
-                    // 重新渲染内容
-                    await renderContent();
-                    closeAnnotationDialog();
+                    const response = await fetch('/api/code/annotations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: filePath,
+                            line: lineNum,
+                            annotation: annotation
+                        })
+                    });
+
+                    if (response.ok) {
+                        await loadCodeAnnotations(filePath);
+                        // 重新渲染代码
+                        const container = document.getElementById('code-content-' + filePath.replace(/[/]/g, '_'));
+                        if (container) {
+                            // 更新标注点显示
+                            const lineDiv = container.querySelector(`.code-line[data-line="${lineNum}"]`);
+                            if (lineDiv) {
+                                const dot = lineDiv.querySelector('.annotation-dot');
+                                dot.classList.add('has-annotation');
+                                dot.innerHTML = '📝';
+                            }
+                        }
+                        closeAnnotationDialog();
+                        state._codeAnnotationContext = null;
+                    }
+                } else {
+                    // 文档标注
+                    const response = await fetch('/api/annotations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            file: state.currentFile,
+                            annotation: annotation
+                        })
+                    });
+
+                    if (response.ok) {
+                        await loadAnnotations(state.currentFile);
+                        await renderContent();
+                        closeAnnotationDialog();
+                    }
                 }
             } catch (error) {
                 console.error('Error saving annotation:', error);
@@ -920,6 +1191,7 @@
 
         function closeAnnotationDialog() {
             document.getElementById('annotationDialog').style.display = 'none';
+            state._codeAnnotationContext = null;
         }
 
         function handleAnnotationClick(e) {
@@ -990,6 +1262,381 @@
                     }
                 }
             });
+        }
+
+        // ========== 代码视图 ==========
+        async function loadCodeDiff() {
+            try {
+                const response = await fetch('/api/code/diff');
+                if (!response.ok) {
+                    throw new Error('Failed to load code diff');
+                }
+
+                const data = await response.json();
+                state.codeFiles = data.files || [];
+
+                updateCodeFileList();
+                renderCodeView();
+            } catch (error) {
+                console.error('Error loading code diff:', error);
+                document.getElementById('fileList').innerHTML =
+                    '<div class="error">加载代码变更失败: ' + error.message + '</div>';
+            }
+        }
+
+        function updateCodeFileList() {
+            const fileList = document.getElementById('fileList');
+
+            if (state.codeFiles.length === 0) {
+                fileList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">没有代码变更</div>';
+                return;
+            }
+
+            const statusIcons = {
+                'A': '➕',
+                'M': '✏️',
+                'D': '➖'
+            };
+
+            fileList.innerHTML = state.codeFiles.map(file => `
+                <div class="file-item" data-file="${file.path}">
+                    <span class="file-icon">${statusIcons[file.status] || '📄'}</span>
+                    <span class="file-name">${file.path.split('/').pop()}</span>
+                    <span style="font-size: 11px; color: var(--text-secondary);">
+                        +${file.added}/-${file.deleted}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function renderCodeView() {
+            const renderedView = document.getElementById('renderedView');
+            const sourceView = document.getElementById('sourceView');
+
+            // 隐藏源码视图按钮
+            document.querySelector('.view-toggle').style.display = 'none';
+
+            if (state.codeFiles.length === 0) {
+                renderedView.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">没有代码变更</div>';
+                return;
+            }
+
+            let html = '<div class="code-view-container">';
+            html += '<div class="code-toolbar">';
+            html += '<div class="code-toolbar-title">代码变更</div>';
+            html += '<div class="code-toolbar-info">共 ' + state.codeFiles.length + ' 个文件变更</div>';
+            html += '</div>';
+
+            state.codeFiles.forEach(file => {
+                html += renderCodeFileSection(file);
+            });
+
+            html += '</div>';
+            renderedView.innerHTML = html;
+
+            // 绑定展开/折叠事件
+            bindCodeViewEvents();
+        }
+
+        function renderCodeFileSection(file) {
+            const isExpanded = state.codeExpandedFiles[file.path] !== false;
+
+            let html = '<div class="code-section" data-file="' + file.path + '">';
+            html += '<div class="code-file-header" onclick="toggleCodeFile(\'' + file.path + '\')">';
+            html += '<div class="code-file-info">';
+            html += '<span class="code-file-path">' + file.path + '</span>';
+            html += '<div class="code-file-stats">';
+            html += '<span class="code-stat-added">+' + file.added + '</span>';
+            html += '<span class="code-stat-deleted">-' + file.deleted + '</span>';
+            html += '</div></div>';
+            html += '<span class="code-file-toggle">' + (isExpanded ? '▼ 收起' : '▶ 展开') + '</span>';
+            html += '</div>';
+
+            html += '<div class="code-content' + (isExpanded ? '' : ' collapsed') + '" id="code-content-' + file.path.replace(/[/]/g, '_') + '">';
+            html += '<div class="loading" style="padding: 20px;"><div class="spinner"></div></div>';
+            html += '</div>';
+
+            html += '</div>';
+            return html;
+        }
+
+        function toggleCodeFile(filePath) {
+            state.codeExpandedFiles[filePath] = state.codeExpandedFiles[filePath] === false;
+
+            const section = document.querySelector('.code-section[data-file="' + filePath + '"]');
+            const content = section.querySelector('.code-content');
+            const toggle = section.querySelector('.code-file-toggle');
+
+            if (state.codeExpandedFiles[filePath] !== false) {
+                content.classList.remove('collapsed');
+                toggle.textContent = '▼ 收起';
+                // 加载代码
+                loadCodeFileContent(filePath);
+            } else {
+                content.classList.add('collapsed');
+                toggle.textContent = '▶ 展开';
+            }
+        }
+
+        async function loadCodeFileContent(filePath) {
+            const contentId = 'code-content-' + filePath.replace(/[/]/g, '_');
+            const contentDiv = document.getElementById(contentId);
+
+            try {
+                // 加载标注
+                await loadCodeAnnotations(filePath);
+
+                // 获取初始代码范围（diff 上下文）
+                const response = await fetch(`/api/code/file?path=${encodeURIComponent(filePath)}&start=1&end=50`);
+                if (!response.ok) throw new Error('Failed to load code');
+
+                const data = await response.json();
+
+                // 记录已加载范围
+                state.codeLoadedRanges[filePath] = [{start: data.rangeStart, end: data.rangeEnd}];
+
+                // 渲染代码
+                renderCodeLines(contentDiv, data, filePath);
+
+            } catch (error) {
+                console.error('Error loading code file:', error);
+                contentDiv.innerHTML = '<div class="error">加载失败: ' + error.message + '</div>';
+            }
+        }
+
+        function renderCodeLines(container, data, filePath) {
+            let html = '';
+
+            // 上方展开按钮
+            const firstRange = state.codeLoadedRanges[filePath][0];
+            if (firstRange.start > 1) {
+                html += `<div class="code-expand-btn" onclick="expandCodeUp('${filePath}', ${firstRange.start})">
+                    ▲ 展开上方 ${Math.min(EXPAND_LINES, firstRange.start - 1)} 行 (第 1-${firstRange.start - 1} 行未加载)
+                </div>`;
+            }
+
+            // 代码行
+            html += '<div class="code-lines">';
+            data.lines.forEach(line => {
+                const annotation = state.codeAnnotations[filePath]?.[line.num];
+                const hasAnnotation = !!annotation;
+
+                html += `<div class="code-line ${line.type}" data-line="${line.num}" data-file="${filePath}">`;
+                html += `<div class="code-line-num">${line.num}</div>`;
+                html += `<div class="code-line-content">${escapeHtml(line.content)}</div>`;
+                html += `<div class="code-line-annotation" onclick="showCodeAnnotationDialog('${filePath}', ${line.num}, event)">
+                    <div class="annotation-dot ${hasAnnotation ? 'has-annotation' : ''}" title="${hasAnnotation ? '点击查看标注' : '点击添加标注'}">
+                        ${hasAnnotation ? '📝' : '+'}
+                    </div>
+                </div>`;
+                html += '</div>';
+            });
+            html += '</div>';
+
+            // 下方展开按钮
+            const lastRange = state.codeLoadedRanges[filePath][state.codeLoadedRanges[filePath].length - 1];
+            if (lastRange.end < data.totalLines) {
+                const remaining = data.totalLines - lastRange.end;
+                html += `<div class="code-expand-btn" onclick="expandCodeDown('${filePath}', ${lastRange.end})">
+                    ▼ 展开下方 ${Math.min(EXPAND_LINES, remaining)} 行 (第 ${lastRange.end + 1}-${data.totalLines} 行未加载)
+                </div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function expandCodeUp(filePath, currentStart) {
+            const newEnd = currentStart - 1;
+            const newStart = Math.max(1, newEnd - EXPAND_LINES + 1);
+
+            if (newStart > newEnd) return;
+
+            const container = document.getElementById('code-content-' + filePath.replace(/[/]/g, '_'));
+            const linesDiv = container.querySelector('.code-lines');
+            const expandBtn = container.querySelector('.code-expand-btn:first-child');
+
+            try {
+                const response = await fetch(`/api/code/file?path=${encodeURIComponent(filePath)}&start=${newStart}&end=${newEnd}`);
+                const data = await response.json();
+
+                // 更新已加载范围
+                state.codeLoadedRanges[filePath][0] = {start: newStart, end: currentStart - 1};
+
+                // 插入新行到顶部
+                let newHtml = '';
+                data.lines.forEach(line => {
+                    const annotation = state.codeAnnotations[filePath]?.[line.num];
+                    const hasAnnotation = !!annotation;
+
+                    newHtml += `<div class="code-line ${line.type}" data-line="${line.num}" data-file="${filePath}">`;
+                    newHtml += `<div class="code-line-num">${line.num}</div>`;
+                    newHtml += `<div class="code-line-content">${escapeHtml(line.content)}</div>`;
+                    newHtml += `<div class="code-line-annotation" onclick="showCodeAnnotationDialog('${filePath}', ${line.num}, event)">
+                        <div class="annotation-dot ${hasAnnotation ? 'has-annotation' : ''}" title="${hasAnnotation ? '点击查看标注' : '点击添加标注'}">
+                            ${hasAnnotation ? '📝' : '+'}
+                        </div>
+                    </div>`;
+                    newHtml += '</div>';
+                });
+
+                linesDiv.insertAdjacentHTML('afterbegin', newHtml);
+
+                // 更新或隐藏展开按钮
+                if (newStart <= 1) {
+                    expandBtn.classList.add('hidden');
+                } else {
+                    expandBtn.onclick = () => expandCodeUp(filePath, newStart);
+                    expandBtn.innerHTML = `▲ 展开上方 ${Math.min(EXPAND_LINES, newStart - 1)} 行`;
+                }
+
+            } catch (error) {
+                console.error('Error expanding code up:', error);
+            }
+        }
+
+        async function expandCodeDown(filePath, currentEnd) {
+            const newStart = currentEnd + 1;
+
+            const container = document.getElementById('code-content-' + filePath.replace(/[/]/g, '_'));
+            const linesDiv = container.querySelector('.code-lines');
+            const expandBtn = container.querySelector('.code-expand-btn:last-child');
+
+            try {
+                // 获取文件总行数
+                const lastRange = state.codeLoadedRanges[filePath][state.codeLoadedRanges[filePath].length - 1];
+                const totalLines = lastRange ? lastRange.end : 1000;
+
+                const newEnd = Math.min(totalLines + EXPAND_LINES, newStart + EXPAND_LINES - 1);
+
+                const response = await fetch(`/api/code/file?path=${encodeURIComponent(filePath)}&start=${newStart}&end=${newEnd}`);
+                const data = await response.json();
+
+                // 更新已加载范围
+                const ranges = state.codeLoadedRanges[filePath];
+                ranges.push({start: newStart, end: data.rangeEnd});
+                // 合并连续范围
+                mergeRanges(ranges);
+
+                // 插入新行到底部
+                let newHtml = '';
+                data.lines.forEach(line => {
+                    const annotation = state.codeAnnotations[filePath]?.[line.num];
+                    const hasAnnotation = !!annotation;
+
+                    newHtml += `<div class="code-line ${line.type}" data-line="${line.num}" data-file="${filePath}">`;
+                    newHtml += `<div class="code-line-num">${line.num}</div>`;
+                    newHtml += `<div class="code-line-content">${escapeHtml(line.content)}</div>`;
+                    newHtml += `<div class="code-line-annotation" onclick="showCodeAnnotationDialog('${filePath}', ${line.num}, event)">
+                        <div class="annotation-dot ${hasAnnotation ? 'has-annotation' : ''}" title="${hasAnnotation ? '点击查看标注' : '点击添加标注'}">
+                            ${hasAnnotation ? '📝' : '+'}
+                        </div>
+                    </div>`;
+                    newHtml += '</div>';
+                });
+
+                linesDiv.insertAdjacentHTML('beforeend', newHtml);
+
+                // 更新或隐藏展开按钮
+                if (data.rangeEnd >= data.totalLines) {
+                    expandBtn.classList.add('hidden');
+                } else {
+                    expandBtn.onclick = () => expandCodeDown(filePath, data.rangeEnd);
+                    const remaining = data.totalLines - data.rangeEnd;
+                    expandBtn.innerHTML = `▼ 展开下方 ${Math.min(EXPAND_LINES, remaining)} 行`;
+                }
+
+            } catch (error) {
+                console.error('Error expanding code down:', error);
+            }
+        }
+
+        function mergeRanges(ranges) {
+            ranges.sort((a, b) => a.start - b.start);
+            const merged = [ranges[0]];
+
+            for (let i = 1; i < ranges.length; i++) {
+                const last = merged[merged.length - 1];
+                const current = ranges[i];
+
+                if (current.start <= last.end + 1) {
+                    last.end = Math.max(last.end, current.end);
+                } else {
+                    merged.push(current);
+                }
+            }
+
+            ranges.length = 0;
+            ranges.push(...merged);
+        }
+
+        async function loadCodeAnnotations(filePath) {
+            try {
+                const response = await fetch(`/api/code/annotations?path=${encodeURIComponent(filePath)}`);
+                if (response.ok) {
+                    if (!state.codeAnnotations[filePath]) {
+                        state.codeAnnotations[filePath] = {};
+                    }
+                    state.codeAnnotations[filePath] = await response.json();
+                }
+            } catch (error) {
+                console.error('Error loading code annotations:', error);
+            }
+        }
+
+        function selectCodeFile(filePath) {
+            // 更新文件列表高亮
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.file === filePath);
+            });
+
+            // 更新标题
+            document.getElementById('contentTitle').textContent = filePath;
+
+            // 展开并加载代码
+            state.codeExpandedFiles[filePath] = true;
+            loadCodeFileContent(filePath);
+
+            // 滚动到对应文件
+            const section = document.querySelector('.code-section[data-file="' + filePath + '"]');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function showCodeAnnotationDialog(filePath, lineNum, event) {
+            event.stopPropagation();
+
+            const existing = state.codeAnnotations[filePath]?.[lineNum];
+
+            document.getElementById('annotationDialog').style.display = 'block';
+            document.getElementById('annotationType').value = existing?.type || 'MAJOR';
+            document.getElementById('annotationContent').value = existing?.content || '';
+
+            // 保存当前上下文
+            state._codeAnnotationContext = { filePath, lineNum };
+
+            // 显示历史
+            if (existing) {
+                const listDiv = document.getElementById('annotationList');
+                const itemsDiv = document.getElementById('annotationItems');
+                listDiv.style.display = 'block';
+                itemsDiv.innerHTML = `
+                    <div class="annotation-item">
+                        <div class="annotation-header">
+                            <span class="annotation-type ${existing.type}">${existing.type}</span>
+                            <span class="annotation-status">${existing.status || 'pending'}</span>
+                        </div>
+                        <div class="annotation-content">${escapeHtml(existing.content)}</div>
+                        <div class="annotation-time">${existing.timestamp || ''}</div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('annotationList').style.display = 'none';
+            }
+        }
+
+        function bindCodeViewEvents() {
+            // 代码行点击事件已通过 inline onclick 绑定
         }
 
         // ========== 启动 ==========

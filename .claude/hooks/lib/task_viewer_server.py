@@ -11,8 +11,10 @@ import sys
 import signal
 import threading
 import time
+import subprocess
+import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 from urllib.parse import parse_qs, urlparse
 
 
@@ -43,6 +45,21 @@ class TaskViewerHandler(http.server.SimpleHTTPRequestHandler):
             query = parse_qs(parsed_path.query)
             filename = query.get('file', [''])[0]
             self.serve_annotations(filename)
+        elif parsed_path.path == '/api/code/diff':
+            # 返回代码变更列表
+            self.serve_code_diff()
+        elif parsed_path.path == '/api/code/file':
+            # 返回代码文件指定范围
+            query = parse_qs(parsed_path.query)
+            file_path = query.get('path', [''])[0]
+            start = int(query.get('start', ['1'])[0])
+            end = int(query.get('end', ['100'])[0])
+            self.serve_code_range(file_path, start, end)
+        elif parsed_path.path == '/api/code/annotations':
+            # 返回代码标注
+            query = parse_qs(parsed_path.query)
+            file_path = query.get('path', [''])[0]
+            self.serve_code_annotations(file_path)
         else:
             # 静态文件
             super().do_GET()
@@ -54,6 +71,9 @@ class TaskViewerHandler(http.server.SimpleHTTPRequestHandler):
         if parsed_path.path == '/api/annotations':
             # 保存标注
             self.save_annotation()
+        elif parsed_path.path == '/api/code/annotations':
+            # 保存代码标注
+            self.save_code_annotation()
         else:
             self.send_error(404, "Not found")
 
@@ -185,6 +205,269 @@ class TaskViewerHandler(http.server.SimpleHTTPRequestHandler):
 
         except Exception as e:
             self.send_error(500, f"Error saving annotation: {str(e)}")
+
+    # ========== 代码视图 API ==========
+
+    def serve_code_diff(self):
+        """返回代码变更列表（基于 git diff）"""
+        if not self.task_path:
+            self.send_error(400, "No task path")
+            return
+
+        try:
+            # 获取项目根目录
+            project_root = Path(self.task_path).parent.parent
+
+            # 获取当前分支相对于 main 的变更文件
+            result = subprocess.run(
+                ['git', 'diff', '--name-status', 'main...HEAD'],
+                capture_output=True, text=True, cwd=project_root
+            )
+
+            changed_files = []
+            for line in result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    status = parts[0]  # A/M/D
+                    file_path = parts[1]
+                    # 只包含代码文件
+                    if self._is_code_file(file_path):
+                        # 获取文件总行数
+                        full_path = project_root / file_path
+                        total_lines = self._count_lines(full_path) if full_path.exists() else 0
+
+                        # 获取变更统计
+                        stat_result = subprocess.run(
+                            ['git', 'diff', '--numstat', 'main...HEAD', '--', file_path],
+                            capture_output=True, text=True, cwd=project_root
+                        )
+                        added, deleted = 0, 0
+                        if stat_result.stdout.strip():
+                            stat_parts = stat_result.stdout.strip().split()
+                            if len(stat_parts) >= 2:
+                                added = int(stat_parts[0]) if stat_parts[0] != '-' else 0
+                                deleted = int(stat_parts[1]) if stat_parts[1] != '-' else 0
+
+                        changed_files.append({
+                            'path': file_path,
+                            'status': status,
+                            'totalLines': total_lines,
+                            'added': added,
+                            'deleted': deleted
+                        })
+
+            self.send_json_response({'files': changed_files})
+
+        except Exception as e:
+            self.send_error(500, f"Error getting code diff: {str(e)}")
+
+    def serve_code_range(self, file_path: str, start: int, end: int):
+        """返回代码文件指定行范围"""
+        if not file_path or not self.task_path:
+            self.send_error(400, "Invalid request")
+            return
+
+        try:
+            project_root = Path(self.task_path).parent.parent
+            full_path = project_root / file_path
+
+            if not full_path.exists():
+                self.send_error(404, "File not found")
+                return
+
+            # 读取文件
+            with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                all_lines = f.readlines()
+
+            total_lines = len(all_lines)
+
+            # 调整范围
+            start = max(1, start)
+            end = min(total_lines, end)
+
+            # 获取 diff 信息用于标记变更行
+            diff_info = self._get_diff_info(file_path, project_root)
+
+            # 构造响应
+            lines = []
+            for i in range(start - 1, end):
+                line_num = i + 1
+                line_content = all_lines[i].rstrip('\n\r')
+                line_type = diff_info.get(line_num, 'context')
+
+                lines.append({
+                    'num': line_num,
+                    'content': line_content,
+                    'type': line_type  # context, added, removed
+                })
+
+            self.send_json_response({
+                'file': file_path,
+                'lines': lines,
+                'totalLines': total_lines,
+                'rangeStart': start,
+                'rangeEnd': end,
+                'language': self._detect_language(file_path)
+            })
+
+        except Exception as e:
+            self.send_error(500, f"Error reading code file: {str(e)}")
+
+    def serve_code_annotations(self, file_path: str):
+        """返回代码标注"""
+        if not file_path or not self.task_path:
+            self.send_error(400, "Invalid request")
+            return
+
+        annotations_file = Path(self.task_path) / '.annotations' / 'code.json'
+
+        if not annotations_file.exists():
+            self.send_json_response({})
+            return
+
+        try:
+            with open(annotations_file, 'r', encoding='utf-8') as f:
+                all_annotations = json.load(f)
+
+            file_annotations = all_annotations.get(file_path, {})
+            self.send_json_response(file_annotations)
+
+        except Exception as e:
+            self.send_json_response({})
+
+    def save_code_annotation(self):
+        """保存代码标注"""
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(post_data.decode('utf-8'))
+            file_path = data.get('path')
+            line_num = str(data.get('line'))  # 用字符串作为 key
+            annotation = data.get('annotation')
+
+            if not file_path or not line_num or not annotation:
+                self.send_error(400, "Invalid data")
+                return
+
+            # 确保 .annotations 目录存在
+            annotations_dir = Path(self.task_path) / '.annotations'
+            annotations_dir.mkdir(parents=True, exist_ok=True)
+
+            annotations_file = annotations_dir / 'code.json'
+
+            # 读取现有标注
+            all_annotations = {}
+            if annotations_file.exists():
+                with open(annotations_file, 'r', encoding='utf-8') as f:
+                    all_annotations = json.load(f)
+
+            # 更新标注
+            if file_path not in all_annotations:
+                all_annotations[file_path] = {}
+
+            # 生成标注 ID
+            annotation['id'] = f"RC-CODE-{int(time.time())}"
+            annotation['timestamp'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+
+            all_annotations[file_path][line_num] = annotation
+
+            # 保存
+            with open(annotations_file, 'w', encoding='utf-8') as f:
+                json.dump(all_annotations, f, indent=2, ensure_ascii=False)
+
+            self.send_json_response({'success': True, 'id': annotation['id']})
+
+        except Exception as e:
+            self.send_error(500, f"Error saving code annotation: {str(e)}")
+
+    def _is_code_file(self, file_path: str) -> bool:
+        """判断是否为代码文件"""
+        code_extensions = {
+            '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go', '.rs',
+            '.c', '.cpp', '.h', '.hpp', '.cs', '.rb', '.php', '.swift',
+            '.kt', '.scala', '.vue', '.svelte', '.sh', '.sql'
+        }
+        ext = Path(file_path).suffix.lower()
+        return ext in code_extensions
+
+    def _count_lines(self, file_path: Path) -> int:
+        """统计文件行数"""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                return sum(1 for _ in f)
+        except:
+            return 0
+
+    def _detect_language(self, file_path: str) -> str:
+        """检测代码语言"""
+        ext_map = {
+            '.py': 'python',
+            '.js': 'javascript',
+            '.ts': 'typescript',
+            '.jsx': 'jsx',
+            '.tsx': 'tsx',
+            '.java': 'java',
+            '.go': 'go',
+            '.rs': 'rust',
+            '.c': 'c',
+            '.cpp': 'cpp',
+            '.h': 'c',
+            '.hpp': 'cpp',
+            '.cs': 'csharp',
+            '.rb': 'ruby',
+            '.php': 'php',
+            '.swift': 'swift',
+            '.kt': 'kotlin',
+            '.scala': 'scala',
+            '.vue': 'vue',
+            '.sh': 'bash',
+            '.sql': 'sql'
+        }
+        ext = Path(file_path).suffix.lower()
+        return ext_map.get(ext, 'plaintext')
+
+    def _get_diff_info(self, file_path: str, project_root: Path) -> Dict[int, str]:
+        """获取文件的 diff 信息，返回行号到变更类型的映射"""
+        result = {}
+
+        try:
+            diff_result = subprocess.run(
+                ['git', 'diff', '-U0', 'main...HEAD', '--', file_path],
+                capture_output=True, text=True, cwd=project_root
+            )
+
+            diff_text = diff_result.stdout
+            if not diff_text:
+                return result
+
+            # 解析 diff 输出
+            current_line = 0
+            for line in diff_text.split('\n'):
+                # 匹配 @@ -old_start,old_count +new_start,new_count @@
+                match = re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', line)
+                if match:
+                    start = int(match.group(1))
+                    count = int(match.group(2) or 1)
+                    for i in range(count):
+                        result[start + i] = 'added'
+
+                elif line.startswith('-') and not line.startswith('---'):
+                    pass  # 删除的行在新文件中不存在
+
+        except Exception as e:
+            pass
+
+        return result
+
+    def send_json_response(self, data: dict):
+        """发送 JSON 响应"""
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
 
     def log_message(self, format, *args):
         """自定义日志输出"""
