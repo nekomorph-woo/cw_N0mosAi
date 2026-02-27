@@ -10,6 +10,11 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict
 from pathlib import Path
 
+# 延迟导入避免循环依赖
+def _import_phase_manager():
+    from .phase_manager import PhaseManager
+    return PhaseManager
+
 
 @dataclass
 class TaskInfo:
@@ -81,11 +86,15 @@ class TaskManager:
             "full_id": full_id,
             "path": task_info.path,
             "status": "draft",
-            "archived": False
+            "archived": False,
+            "created": created_time
         }
         self._save_mapping(mapping)
 
-        # 6. 设置当前任务
+        # 6. 初始化阶段状态文件
+        self._init_phase_state(task_path, task_info)
+
+        # 7. 设置当前任务
         self.set_current_task(task_id)
 
         return task_info
@@ -225,3 +234,13 @@ status: draft
             return base_frontmatter + f"# Progress - {task_info.full_id}\n\n（待填充）\n"
         else:
             return base_frontmatter
+
+    def _init_phase_state(self, task_path: Path, task_info: TaskInfo) -> None:
+        """初始化阶段状态文件"""
+        try:
+            PhaseManager = _import_phase_manager()
+            pm = PhaseManager(str(task_path), str(self.project_root))
+            pm.initialize(task_info.task_id)
+        except Exception:
+            # 如果初始化失败，不影响任务创建
+            pass

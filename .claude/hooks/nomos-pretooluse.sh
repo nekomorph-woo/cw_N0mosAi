@@ -1,5 +1,5 @@
 #!/bin/bash
-# PreToolUse Hook: 在 Write/Edit 前运行 Linter
+# PreToolUse Hook: 在 Write/Edit 前运行 Linter 和阶段检查
 
 set -e
 
@@ -40,6 +40,56 @@ if [ -z "$FILE_PATH" ]; then
     echo '{"decision": "approve"}'
     exit 0
 fi
+
+# ============================================================
+# 阶段门控检查
+# ============================================================
+
+# 读取当前任务
+CURRENT_TASK=""
+if [ -f "$PROJECT_ROOT/.claude/current-task.txt" ]; then
+    CURRENT_TASK=$(cat "$PROJECT_ROOT/.claude/current-task.txt")
+fi
+
+# 如果有当前任务，检查阶段状态
+if [ -n "$CURRENT_TASK" ]; then
+    PHASE_CHECK=$($PYTHON_BIN -c "
+import sys, json, os
+sys.path.insert(0, '$PROJECT_ROOT/.claude/hooks')
+
+try:
+    from lib.phase_manager import check_phase_for_file
+
+    task_path = '$CURRENT_TASK'
+    if not task_path.startswith('/'):
+        task_path = os.path.join('$PROJECT_ROOT', task_path)
+
+    allowed, reason = check_phase_for_file(task_path, '$FILE_PATH', '$PROJECT_ROOT')
+
+    print(json.dumps({
+        'allowed': allowed,
+        'reason': reason
+    }))
+except Exception as e:
+    # 出错时允许通过（向后兼容）
+    print(json.dumps({
+        'allowed': True,
+        'reason': f'阶段检查出错: {str(e)}'
+    }))
+")
+
+    PHASE_ALLOWED=$(echo "$PHASE_CHECK" | $PYTHON_BIN -c "import sys,json; print(json.load(sys.stdin)['allowed'])")
+    PHASE_REASON=$(echo "$PHASE_CHECK" | $PYTHON_BIN -c "import sys,json; print(json.load(sys.stdin)['reason'])")
+
+    if [ "$PHASE_ALLOWED" = "False" ]; then
+        echo "{\"decision\": \"reject\", \"message\": \"🚫 阶段门控拦截: $PHASE_REASON\"}"
+        exit 0
+    fi
+fi
+
+# ============================================================
+# Linter 检查
+# ============================================================
 
 # 跳过非代码文件
 case "$FILE_PATH" in

@@ -21,6 +21,19 @@ task = tm.create_task("任务名", "feat")  # 或 fix/refactor/test/docs
 - 初始化四件套: research.md, plan.md, code_review.md, progress.md
 - 更新 current-task.txt 和 short-id-mapping.json
 
+### 1.1 初始化阶段状态
+
+**重要**: 创建任务后，必须初始化阶段状态文件：
+
+```python
+from lib.phase_manager import PhaseManager
+
+pm = PhaseManager(str(task.path))  # task.path 是相对路径
+pm.initialize(task.task_id)
+
+print(f"✅ 阶段状态已初始化，当前阶段: research")
+```
+
 ### 2. 创建 Git 分支
 
 使用 GitManager 创建任务分支：
@@ -75,6 +88,8 @@ why_engine.add_knowledge(
 
 ### 4. Research 阶段
 
+**当前阶段**: `research`（此阶段**不允许写入代码文件**）
+
 **目标**: 深入理解需求，调研相关代码
 
 **步骤**:
@@ -105,7 +120,19 @@ why_engine.add_knowledge(
 - 逐条回复，标记为 `addressed`
 - 如果有 CRITICAL/MAJOR 未处理，不能进入下一阶段
 
+**完成 Research 阶段**:
+```python
+from lib.phase_manager import PhaseManager
+
+pm = PhaseManager("tasks/t1-xxx")  # 替换为实际路径
+pm.complete_phase("research", approved_by="human")
+
+print("✅ Research 阶段已完成，进入 Plan 阶段")
+```
+
 ### 6. Plan 阶段
+
+**当前阶段**: `plan`（此阶段**不允许写入代码文件**）
 
 **目标**: 设计实施方案
 
@@ -143,7 +170,19 @@ why_engine.add_knowledge(
 完成审阅后，告诉我继续。
 ```
 
+**完成 Plan 阶段**:
+```python
+from lib.phase_manager import PhaseManager
+
+pm = PhaseManager("tasks/t1-xxx")  # 替换为实际路径
+pm.complete_phase("plan", approved_by="human")
+
+print("✅ Plan 阶段已完成，进入 Execute 阶段，现在可以写入代码文件")
+```
+
 ### 8. Execute 阶段
+
+**当前阶段**: `execute`（此阶段**允许写入代码文件**）
 
 **目标**: 按 Phase Gates 逐步实现
 
@@ -155,13 +194,26 @@ why_engine.add_knowledge(
    - 如果 Linter 通过 → 允许写入
 4. 更新 progress.md 记录进度和问题
 5. 设置 plan.md 的 YAML Frontmatter: `status: executing`
+6. 更新阶段 Gates 进度：
+   ```python
+   # 统计 plan.md 中已完成和未完成的 Gates
+   pm.update_gates("execute", total=8, completed=3)
+   ```
 
 **约束**:
 - 不能跳过 Gate
 - 所有代码必须通过 Linter
 - Stop Hook 会检查 Gates 完成情况
 
+**完成 Execute 阶段**:
+```python
+pm.complete_phase("execute", approved_by="agent")
+print("✅ Execute 阶段已完成，进入 Review 阶段")
+```
+
 ### 9. Review 阶段
+
+**当前阶段**: `review`（此阶段**允许写入代码文件**）
 
 **目标**: 验证实现质量
 
@@ -171,10 +223,16 @@ why_engine.add_knowledge(
 3. 记录变更和审查发现
 4. 设置 plan.md 的 YAML Frontmatter: `status: done`
 
-## 约束
+**完成 Review 阶段**:
+```python
+pm.complete_phase("review", approved_by="agent")
+print("✅ 任务完成！")
+```
 
-- **不能跳过 Research 直接写 Plan**
-- **不能跳过 Plan 直接写代码**
+## 约束（刚性门控）
+
+- **不能跳过 Research 直接写 Plan** → Phase Manager 强制检查
+- **不能跳过 Plan 直接写代码** → PreToolUse Hook 拦截
 - **所有 CRITICAL/MAJOR Review Comments 必须 addressed**
 - **所有 Phase Gates 必须完成**
 - **所有代码必须通过 Linter**
@@ -187,7 +245,38 @@ why_engine.add_knowledge(
 
 # Agent 执行
 1. 创建 tasks/t1-2026-02-26-user-login/
-2. 初始化四件套
+2. 初始化四件套 + phase_state.json
 3. 创建 Git 分支 feat/2026-02-26-user-login
 4. 开始 Why-First 阶段...
+```
+
+## 阶段状态文件说明
+
+每个任务文件夹下会生成 `phase_state.json`：
+
+```json
+{
+  "task_id": "t1",
+  "current_phase": "execute",
+  "research": {
+    "completed": true,
+    "approved_by": "human",
+    "approved_at": "2026-02-27T10:00:00"
+  },
+  "plan": {
+    "completed": true,
+    "approved_by": "human",
+    "approved_at": "2026-02-27T11:00:00",
+    "gates_total": 5,
+    "gates_completed": 5
+  },
+  "execute": {
+    "completed": false,
+    "gates_total": 8,
+    "gates_completed": 3
+  },
+  "review": {
+    "completed": false
+  }
+}
 ```
