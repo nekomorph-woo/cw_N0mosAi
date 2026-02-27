@@ -1,7 +1,7 @@
 ---
 name: nomos
 description: Agent 刚性工作流管理
-version: 0.1.2
+version: 0.1.3
 commands:
   - name: start
     description: 启动新任务的刚性工作流
