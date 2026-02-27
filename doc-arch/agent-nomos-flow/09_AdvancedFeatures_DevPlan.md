@@ -1447,17 +1447,9 @@ class PRGenerator:
 │  │                               ▼ (静态检查无法判断时)                  │ │
 │  │  ┌────────────────────────────────────────────────────────────────┐  │ │
 │  │  │ Prompt Handler (语义判断)                                       │  │ │
-│  │  │ → 调用 Haiku 单轮判断                                          │  │ │
+│  │  │ → 调用 AI 进行语义判断                                         │  │ │
 │  │  │ → 处理需要语义理解的规则                                        │  │ │
 │  │  │ → 示例: i18n 检查、logger 规范检查                              │  │ │
-│  │  └────────────────────────────────────────────────────────────────┘  │ │
-│  │                               │                                       │ │
-│  │                               ▼ (需要深度验证时)                      │ │
-│  │  ┌────────────────────────────────────────────────────────────────┐  │ │
-│  │  │ Agent Handler (深度验证)                                        │  │ │
-│  │  │ → spawn 子 Agent 进行深度检查                                   │  │ │
-│  │  │ → 处理跨文件依赖、架构一致性                                    │  │ │
-│  │  │ → 示例: Protected Interface 检查、trace_id 传递检查             │  │ │
 │  │  └────────────────────────────────────────────────────────────────┘  │ │
 │  └──────────────────────────────────────────────────────────────────────┘ │
 │                                │                                           │
@@ -1564,19 +1556,23 @@ class LoggerRule(Layer3Rule):
 
 
 class InterfaceProtectionRule(Layer3Rule):
-    """接口保护规则 - Agent Handler"""
+    """接口保护规则 - Command Handler
+
+    使用 AST 解析 + 签名持久化比对
+    """
 
     name = "interface_protection"
-    handler_type = "agent"
-    description = "检查 Protected Interface 是否被未声明修改"
+    handler_type = "command"
+    description = "检查 Protected Interface 签名是否被修改"
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
         """
-        spawn 子 Agent 检查接口签名变更
+        检查接口签名变更 (AST + 签名比对)
 
         config:
           protected_files: ["src/core/interfaces.py"]
           protected_functions: ["authenticate", "authorize"]
+          protected_classes: ["UserService"]
         """
         pass
 
