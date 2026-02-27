@@ -11,6 +11,16 @@ VENV_PATH="$PROJECT_ROOT/.venv"
 # 如果虚拟环境存在，设置 PATH 优先使用虚拟环境中的 Python
 if [ -d "$VENV_PATH/bin" ]; then
     export PATH="$VENV_PATH/bin:$PATH"
+    export VIRTUAL_ENV="$VENV_PATH"
+fi
+
+# 从 .env 文件加载关键环境变量 (ANTHROPIC_*, NOMOS_*)
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            ANTHROPIC_*|NOMOS_*) export "$key=$value" ;;
+        esac
+    done < <(grep -E '^(ANTHROPIC_|NOMOS_)' "$PROJECT_ROOT/.env" 2>/dev/null)
 fi
 
 # ============================================================
