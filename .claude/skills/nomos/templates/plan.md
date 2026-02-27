@@ -73,10 +73,27 @@ current_phase: ""
 
 ### RC-1: （标题）
 
-- **类型**: CRITICAL/MAJOR/MINOR/SUGGEST
-- **状态**: pending/pending_ai_question/addressed
-- **内容**: （批注内容）
-- **回复**: （Agent 的回复）
+> 位置: （行号或章节）
+> 创建时间: （时间戳）
+> 严重程度: [CRITICAL/MAJOR/MINOR/SUGGEST]
+> 状态: [pending/pending_ai_question/addressed]
+
+（批注内容）
+
+#### 回复
+
+（Agent 的回复，如有）
+
+---
+
+### RC-2: （标题）
+
+> 位置: （行号或章节）
+> 创建时间: （时间戳）
+> 严重程度: [MAJOR]
+> 状态: [pending]
+
+（批注内容）
 
 ---
 

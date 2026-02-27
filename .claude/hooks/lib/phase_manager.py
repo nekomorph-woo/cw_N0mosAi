@@ -409,10 +409,17 @@ class PhaseManager:
         """
         解析 Markdown 内容中的 Review Comments
 
-        Review Comments 格式:
+        支持两种格式：
+
+        格式 1（引用块格式，推荐）:
         ### RC-1: 标题
         > 严重程度: [CRITICAL/MAJOR/MINOR/SUGGEST]
-        > 状态: pending/addressed
+        > 状态: [pending/addressed/pending_ai_question]
+
+        格式 2（列表格式，向后兼容）:
+        ### RC-1: 标题
+        - **类型**: CRITICAL/MAJOR/MINOR/SUGGEST
+        - **状态**: pending/addressed/pending_ai_question
 
         Returns:
             {
@@ -429,24 +436,42 @@ class PhaseManager:
             'comments': []
         }
 
-        # 匹配 RC 块：### RC-N: ... 到下一个 ### 或 ---
-        rc_pattern = r'### (RC-\d+):.*?(?=### RC-|\n---|\n## |\Z)'
-        rc_blocks = re.findall(rc_pattern, content, re.DOTALL)
+        # 匹配 RC 块：### RC-N: ... 到下一个 ### RC- 或 --- 或 ## 或文档结束
+        rc_pattern = r'### (RC-\d+[^\\n]*):.*?(?=### RC-|\n---\n|\n## |\Z)'
 
-        for block in re.finditer(rc_pattern, content, re.DOTALL):
-            block_text = block.group(0)
+        for match in re.finditer(rc_pattern, content, re.DOTALL):
+            block_text = match.group(0)
+            rc_id = match.group(1).strip()
             result['total'] += 1
 
-            # 提取严重程度
-            severity_match = re.search(r'严重程度:\s*\[(CRITICAL|MAJOR|MINOR|SUGGEST)\]', block_text)
-            severity = severity_match.group(1) if severity_match else 'MINOR'
+            # 提取严重程度 - 支持多种格式
+            severity = 'MINOR'  # 默认值
 
-            # 提取状态
-            status_match = re.search(r'状态:\s*\[?(\w+)\]?', block_text)
-            status = status_match.group(1) if status_match else 'pending'
+            # 格式 1: > 严重程度: [CRITICAL]
+            severity_match = re.search(r'严重程度[:\s]*\[?(CRITICAL|MAJOR|MINOR|SUGGEST)\]?', block_text, re.IGNORECASE)
+            if severity_match:
+                severity = severity_match.group(1).upper()
+            else:
+                # 格式 2: - **类型**: CRITICAL 或 类型: CRITICAL
+                severity_match = re.search(r'(?:类型|type)[:\s]*\*?\*?(CRITICAL|MAJOR|MINOR|SUGGEST)', block_text, re.IGNORECASE)
+                if severity_match:
+                    severity = severity_match.group(1).upper()
+
+            # 提取状态 - 支持多种格式
+            status = 'pending'  # 默认值
+
+            # 格式 1: > 状态: [pending]
+            status_match = re.search(r'状态[:\s]*\[?(pending|addressed|pending_ai_question)\]?', block_text, re.IGNORECASE)
+            if status_match:
+                status = status_match.group(1).lower()
+            else:
+                # 格式 2: - **状态**: pending
+                status_match = re.search(r'(?:状态|status)[:\s]*\*?\*?(pending|addressed|pending_ai_question)', block_text, re.IGNORECASE)
+                if status_match:
+                    status = status_match.group(1).lower()
 
             # 检查是否是 pending 状态
-            is_pending = status.lower() in ['pending', 'pending_ai_question']
+            is_pending = status in ['pending', 'pending_ai_question']
 
             if is_pending:
                 if severity == 'CRITICAL':
@@ -455,6 +480,7 @@ class PhaseManager:
                     result['major_pending'] += 1
 
             result['comments'].append({
+                'id': rc_id,
                 'severity': severity,
                 'status': status,
                 'pending': is_pending
