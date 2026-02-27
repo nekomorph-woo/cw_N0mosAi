@@ -1,10 +1,9 @@
 """
 第三层业务规则 (Layer 3 Business Rules)
 
-支持三种 Handler 类型:
+支持两种 Handler 类型:
 - Command Handler: 静态检查 (正则、AST)
-- Prompt Handler: 语义判断 (调用 Haiku)
-- Agent Handler: 深度验证 (spawn 子 Agent)
+- Prompt Handler: 语义判断 (调用 AI)
 """
 
 import os
@@ -17,6 +16,7 @@ import time
 import ssl
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from .base_rule import BaseRule, RuleViolation, Severity
 
@@ -535,17 +535,121 @@ class LoggerRule(PromptHandler):
 
 
 class InterfaceProtectionRule(Layer3Rule):
-    """接口保护规则 - Agent Handler
+    """接口保护规则 - Command Handler
 
-    检查 Protected Interface 是否被未声明修改
+    检查 Protected Interface 签名是否被未声明修改
+    使用 AST 解析 + 签名持久化比对
+    签名存储在对应 task 目录下
     """
 
     name = "interface_protection"
-    handler_type = "agent"
+    handler_type = "command"
     description = "检查 Protected Interface 签名是否被修改"
 
+    # 签名文件名 (存储在 task 目录下)
+    SIGNATURE_FILENAME = ".signatures.json"
+
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__(config)
+        self._signatures: Dict[str, Dict] = {}
+        self._task_dir: Optional[str] = None
+        self._load_signatures()
+
+    def _get_project_root(self) -> Path:
+        """获取项目根目录"""
+        cwd = os.getcwd()
+        path = Path(cwd)
+        for _ in range(5):
+            if (path / ".git").exists() or (path / ".claude").exists():
+                return path
+            path = path.parent
+        return Path(cwd)
+
+    def _get_current_task_dir(self) -> Optional[str]:
+        """获取当前 task 目录"""
+        if self._task_dir:
+            return self._task_dir
+
+        project_root = self._get_project_root()
+        current_task_file = project_root / ".claude" / "current-task.txt"
+
+        if current_task_file.exists():
+            try:
+                task_path = current_task_file.read_text().strip()
+                # 处理相对路径
+                if not task_path.startswith('/'):
+                    task_path = str(project_root / task_path)
+                if os.path.isdir(task_path):
+                    self._task_dir = task_path
+                    return self._task_dir
+            except IOError:
+                pass
+
+        return None
+
+    def _get_signature_path(self) -> Optional[str]:
+        """获取签名文件路径 (在 task 目录下)"""
+        task_dir = self._get_current_task_dir()
+        if task_dir:
+            return os.path.join(task_dir, self.SIGNATURE_FILENAME)
+        return None
+
+    def _load_signatures(self) -> None:
+        """加载历史签名"""
+        sig_path = self._get_signature_path()
+        if sig_path and os.path.exists(sig_path):
+            try:
+                with open(sig_path, 'r', encoding='utf-8') as f:
+                    self._signatures = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                self._signatures = {}
+
+    def _save_signatures(self) -> None:
+        """持久化签名 (到 task 目录)"""
+        sig_path = self._get_signature_path()
+        if sig_path:
+            with open(sig_path, 'w', encoding='utf-8') as f:
+                json.dump(self._signatures, f, indent=2, ensure_ascii=False)
+
+    def _extract_signatures(self, content: str) -> Dict[str, Dict]:
+        """提取当前代码的函数/类签名"""
+        signatures = {}
+
+        # 统一使用 ast 模块 (更可靠，支持函数和类)
+        try:
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    params = [arg.arg for arg in node.args.args]
+                    return_type = ast.unparse(node.returns) if node.returns else None
+                    sig_str = f"{node.name}({', '.join(params)}) -> {return_type or 'None'}"
+                    signatures[f"func:{node.name}"] = {
+                        "type": "function",
+                        "name": node.name,
+                        "params": params,
+                        "return_type": return_type,
+                        "line": node.lineno,
+                        "signature": sig_str
+                    }
+
+                if isinstance(node, ast.ClassDef):
+                    # 类签名: 方法列表
+                    methods = [n.name for n in node.body if isinstance(n, ast.FunctionDef)]
+                    sig_str = f"class {node.name}({', '.join(methods)})"
+                    signatures[f"class:{node.name}"] = {
+                        "type": "class",
+                        "name": node.name,
+                        "methods": methods,
+                        "line": node.lineno,
+                        "signature": sig_str
+                    }
+        except SyntaxError:
+            pass
+
+        return signatures
+
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """spawn 子 Agent 检查接口签名变更
+        """检查 Protected Interface 签名变更
 
         config:
           protected_files: ["src/core/interfaces.py"]
@@ -561,40 +665,83 @@ class InterfaceProtectionRule(Layer3Rule):
         protected_functions = self.config.get('protected_functions', [])
         protected_classes = self.config.get('protected_classes', [])
 
-        # 简化实现: 使用 AST 检测函数签名
-        try:
-            tree = ast.parse(content)
-        except SyntaxError:
-            return violations
+        # 提取当前签名
+        current_sigs = self._extract_signatures(content)
 
-        for node in ast.walk(tree):
-            # 检查函数定义
-            if isinstance(node, ast.FunctionDef):
-                if node.name in protected_functions:
-                    # 这里应该与之前的签名比对
-                    # 简化实现: 只检测是否存在
+        # 文件键 (用于持久化)
+        file_key = file_path.replace("/", "__")
+
+        # 获取历史签名
+        historical_sigs = self._signatures.get(file_key, {})
+
+        # 检查函数签名
+        for func_name in protected_functions:
+            sig_key = f"func:{func_name}"
+            current = current_sigs.get(sig_key)
+
+            if current is None:
+                # 函数被删除
+                violations.append(RuleViolation(
+                    rule=self.name,
+                    message=f"Protected Function '{func_name}' 被删除",
+                    line=0,
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion="删除 Protected Interface 必须在 plan.md 中声明并获批准"
+                ))
+            elif sig_key in historical_sigs:
+                historical = historical_sigs[sig_key]
+                if current["signature"] != historical["signature"]:
+                    # 签名变化
                     violations.append(RuleViolation(
                         rule=self.name,
-                        message=f"Protected Function '{node.name}' 被修改",
-                        line=node.lineno,
+                        message=f"Protected Function '{func_name}' 签名被修改",
+                        line=current["line"],
                         column=0,
                         severity=Severity.ERROR,
-                        suggestion="修改 Protected Interface 前必须在 plan.md 中声明"
+                        suggestion=f"修改前: {historical['signature']}\n修改后: {current['signature']}\n修改 Protected Interface 前必须在 plan.md 中声明"
                     ))
 
-            # 检查类定义
-            if isinstance(node, ast.ClassDef):
-                if node.name in protected_classes:
+        # 检查类签名
+        for class_name in protected_classes:
+            sig_key = f"class:{class_name}"
+            current = current_sigs.get(sig_key)
+
+            if current is None:
+                # 类被删除
+                violations.append(RuleViolation(
+                    rule=self.name,
+                    message=f"Protected Class '{class_name}' 被删除",
+                    line=0,
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion="删除 Protected Interface 必须在 plan.md 中声明并获批准"
+                ))
+            elif sig_key in historical_sigs:
+                historical = historical_sigs[sig_key]
+                if current["signature"] != historical["signature"]:
+                    # 签名变化 (方法列表变化)
                     violations.append(RuleViolation(
                         rule=self.name,
-                        message=f"Protected Class '{node.name}' 被修改",
-                        line=node.lineno,
+                        message=f"Protected Class '{class_name}' 签名被修改",
+                        line=current["line"],
                         column=0,
                         severity=Severity.ERROR,
-                        suggestion="修改 Protected Interface 前必须在 plan.md 中声明"
+                        suggestion=f"修改前: {historical['signature']}\n修改后: {current['signature']}\n修改 Protected Interface 前必须在 plan.md 中声明"
                     ))
+
+        # 如果没有违规，更新签名基线
+        if not violations:
+            self._signatures[file_key] = current_sigs
+            self._save_signatures()
 
         return violations
+
+    def update_baseline(self, file_path: str, content: str) -> None:
+        """手动更新签名基线 (审批后调用)"""
+        file_key = file_path.replace("/", "__")
+        self._signatures[file_key] = self._extract_signatures(content)
+        self._save_signatures()
 
 
 class DynamicRuleLoader:

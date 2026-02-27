@@ -465,7 +465,7 @@ def _get_suggestion(self, test_id: str) -> str:
 
 **文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/layer3_business.py`
 
-第三层规则支持三种 Handler 类型:
+第三层规则支持两种 Handler 类型:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -475,17 +475,12 @@ def _get_suggestion(self, test_id: str) -> str:
 │  Command Handler (静态检查)                                 │
 │  ├── 使用正则表达式、AST 解析                               │
 │  ├── 速度快，确定性高                                       │
-│  └── 示例: ModuleIsolationRule                             │
+│  └── 示例: ModuleIsolationRule, InterfaceProtectionRule    │
 │                                                             │
 │  Prompt Handler (语义判断)                                  │
-│  ├── 调用 Haiku 模型进行语义分析                            │
+│  ├── 调用 AI 模型进行语义分析                               │
 │  ├── 能处理复杂的语义场景                                   │
 │  └── 示例: I18nRule, LoggerRule                            │
-│                                                             │
-│  Agent Handler (深度验证)                                   │
-│  ├── spawn 子 Agent 进行深度验证                            │
-│  ├── 最强大但开销最大                                       │
-│  └── 示例: InterfaceProtectionRule                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -558,16 +553,20 @@ class I18nRule(Layer3Rule):
                     ))
 ```
 
-**注意**: 当前实现使用正则作为 fallback，实际设计中应该调用 Haiku 模型
+**注意**: 当前实现使用正则作为 fallback，实际设计中应该调用 AI 模型
 
-#### 3.7.3 InterfaceProtectionRule (Agent Handler)
+#### 3.7.3 InterfaceProtectionRule (Command Handler)
 
 ```python
 class InterfaceProtectionRule(Layer3Rule):
-    """接口保护规则 - Agent Handler"""
+    """接口保护规则 - Command Handler
+
+    检查 Protected Interface 签名是否被未声明修改
+    使用 AST 解析 + 签名持久化比对
+    """
 
     name = "interface_protection"
-    handler_type = "agent"
+    handler_type = "command"
     description = "检查 Protected Interface 签名是否被修改"
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
@@ -577,18 +576,31 @@ class InterfaceProtectionRule(Layer3Rule):
           protected_functions: ["authenticate", "authorize"]
           protected_classes: ["UserService"]
         """
-        # 简化实现: 使用 AST 检测函数签名
-        tree = ast.parse(content)
+        # 1. 提取当前签名 (使用 AST)
+        current_sigs = self._extract_signatures(content)
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if node.name in protected_functions:
-                    violations.append(RuleViolation(
-                        severity=Severity.CRITICAL,
-                        message=f"Protected Function '{node.name}' 被修改",
-                        suggestion="修改 Protected Interface 前必须在 plan.md 中声明"
-                    ))
+        # 2. 加载历史签名
+        historical_sigs = self._signatures.get(file_key, {})
+
+        # 3. 比对签名变化
+        for func_name in protected_functions:
+            current = current_sigs.get(f"func:{func_name}")
+            historical = historical_sigs.get(f"func:{func_name}")
+
+            if current is None:
+                # 函数被删除
+                violations.append(...)
+            elif historical and current["signature"] != historical["signature"]:
+                # 签名变化
+                violations.append(...)
+
+        # 4. 无违规时更新基线
+        if not violations:
+            self._signatures[file_key] = current_sigs
+            self._save_signatures()
 ```
+
+**签名持久化**: `{task_dir}/.signatures.json` (存储在对应 task 目录下)
 
 #### 3.7.4 DynamicRuleLoader (动态规则加载)
 
@@ -935,22 +947,21 @@ for r in results:
 │                                                             │
 │  Layer 3 (业务规则)                                         │
 │  ├── ModuleIsolationRule       ✅ Command Handler 实现      │
-│  ├── I18nRule                  ⚠️ 简化实现 (未调用 Haiku)   │
-│  ├── LoggerRule                ✅ Command Handler 实现      │
-│  ├── InterfaceProtectionRule   ⚠️ 简化实现 (未比对签名)     │
-│  └── DynamicRuleLoader         ✅ 基本实现                  │
+│  ├── I18nRule                  ✅ Prompt Handler (AI 语义)  │
+│  ├── LoggerRule                ✅ Prompt Handler (AI 语义)  │
+│  ├── InterfaceProtectionRule   ✅ Command Handler (签名比对)│
+│  └── DynamicRuleLoader         ✅ 完整实现                  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.2 差异分析
 
-| 组件 | 设计要求 | 实际实现 | 差距 |
+| 组件 | 设计要求 | 实际实现 | 状态 |
 |------|---------|---------|------|
-| **Prompt Handler** | 调用 Haiku 进行语义分析 | 使用正则 fallback | 未集成 AI 能力 |
-| **Agent Handler** | spawn 子 Agent 深度验证 | 仅 AST 静态检查 | 未实现 Agent 机制 |
-| **签名比对** | 与历史签名对比 | 仅检测存在性 | 缺少持久化比对 |
-| **配置来源** | plan.md + YAML 文件 | 仅 plan.md | 未支持独立配置文件 |
+| **Prompt Handler** | AI 语义分析 | ✅ 调用 AI API + 正则降级 | 已实现 |
+| **签名比对** | 与历史签名对比 | ✅ AST + JSON 持久化 | 已实现 |
+| **配置来源** | plan.md + YAML 文件 | plan.md | 部分实现 |
 
 ### 4.3 接口差异
 
@@ -1182,19 +1193,15 @@ custom_rules:
 
 ### 6.3 扩展建议
 
-1. **实现 Prompt Handler 的 AI 集成**
-   - 接入 Haiku 模型进行语义分析
-   - 设计 prompt 模板用于 i18n 检测等场景
+1. **优化 Prompt Handler**
+   - 优化 prompt 模板提高准确率
+   - 添加更多语义分析场景
 
-2. **实现 Agent Handler 的子 Agent 机制**
-   - 设计 Agent spawn 接口
-   - 实现签名持久化和比对
-
-3. **支持独立配置文件**
+2. **支持独立配置文件**
    - 添加 `.nomos/linter.yaml` 配置支持
    - 合并 plan.md 和配置文件的规则
 
-4. **增量检查**
+3. **增量检查**
    - 基于文件 hash 的缓存机制
    - 只检查变更的文件
 

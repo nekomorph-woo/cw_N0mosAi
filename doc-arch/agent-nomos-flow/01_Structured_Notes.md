@@ -71,7 +71,7 @@ Value Proposition:
 
 Data Flow:
 - [D1] 用户输入 → UserPromptSubmit Hook 检查 → 注入 research.md/plan.md 上下文 → 主 Agent 处理
-- [D2] Agent 生成代码 → PreToolUse Hook 拦截 → Command Handler(静态 Linter) → Prompt Handler(语义判断) → Agent Handler(深度验证) → 通过后写入文件
+- [D2] Agent 生成代码 → PreToolUse Hook 拦截 → Command Handler(静态 Linter + AST 签名比对) → Prompt Handler(AI 语义判断) → 通过后写入文件
 - [D3] 文件写入后 → PostToolUse Hook → 自动格式化 + 测试 + spawn Reviewer Subagent → 结果追加到 code_review.md
 - [D4] Agent 准备结束 → Stop Hook → 验证 Phase Gates + Review Comments + Linter + 测试 → 全通过才放行
 - [D5] plan.md 更新 → PostToolUse Hook → 桌面通知/打开编辑器 → 人类批注 → 保存 → UserPromptSubmit Hook 检测到新批注 → spawn Validator Subagent
@@ -89,7 +89,7 @@ Key Components:
 - [C7] **Code Reviewer Subagent**: 只读 + Linter,自动化 code review,检查架构一致性、测试覆盖率、安全风险
 - [C8] **Tree-sitter Parser**: 统一多语言 AST 解析后端,支持 Python/JS/TS/Java/Go/Rust 等 50+ 语言
 - [C9] **LLM Reporter**: 输出 JSON 格式报告(line/message/suggestion),方便 Agent 直接理解并自我修正
-- [C10] **Hooks Handler Chain**: Command(静态快速) → Prompt(语义判断) → Agent(深度验证),顺序链式执行
+- [C10] **Hooks Handler Chain**: Command(静态快速 + AST) → Prompt(AI 语义判断),顺序链式执行
 - [C11] **project-why.md (知识库)**: 跨任务累积的项目知识库,记录所有"为什么"的答案和失败经验,支持智能维护(相似检测、合并、补充、增强)
 - [C12] **Why-First Subagent**: 专门负责生成定向 Why 问题(5-12 个),先回顾 project-why.md 已有内容,与用户沟通对齐,进行智能维护
 - [C13] **Mermaid Generator**: 自动生成 Mermaid 流程图/架构图/时序图,嵌入 plan.md
@@ -204,5 +204,5 @@ Error Handling:
 - [E6] **Review Comments 未 Addressed**: Stop Hook 阻塞 → 列出未处理的 Thread → Agent 必须逐个回复并标记 Addressed
 - [E7] **测试失败**: PostToolUse Hook 检测到 → 写入 code_review.md → Agent 读取失败原因 → 修复代码 → 重新跑测试
 - [E8] **架构冲突**: Reviewer Subagent 发现违反 Protected Interfaces → 写入 code_review.md → 人类批注确认 → Hook 触发 git revert
-- [E9] **Hooks 超时**: Command/Prompt/Agent Handler 超时 → 返回 timeout 错误 → Agent 收到提示 → 简化代码或拆分任务
+- [E9] **Hooks 超时**: Command/Prompt Handler 超时 → 返回 timeout 错误 → Agent 收到提示 → 简化代码或拆分任务
 - [E10] **Task 文件夹不存在**: SessionStart Hook 检测到 → 提示用户指定 task-id 或创建新任务 → 自动初始化三件套模板
