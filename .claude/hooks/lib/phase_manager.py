@@ -5,9 +5,10 @@ Phase Manager - 阶段状态管理器
 
 import os
 import json
+import re
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from pathlib import Path
 from enum import Enum
 
@@ -204,6 +205,11 @@ class PhaseManager:
             if not state.research.approved_by:
                 return False, "Research 阶段未获人类审阅批准"
 
+            # 增强检查：验证 research.md 中的 Review Comments
+            rc_result = self._check_review_comments("research.md")
+            if not rc_result[0]:
+                return False, rc_result[1]
+
         # 要进入 Execute，需要 Plan 完成
         if target_phase == Phase.EXECUTE.value:
             if not state.plan.completed:
@@ -211,10 +217,20 @@ class PhaseManager:
             if not state.plan.approved_by:
                 return False, "Plan 阶段未获人类审阅批准"
 
+            # 增强检查：验证 plan.md 中的 Review Comments
+            rc_result = self._check_review_comments("plan.md")
+            if not rc_result[0]:
+                return False, rc_result[1]
+
         # 要进入 Review，需要 Execute 完成
         if target_phase == Phase.REVIEW.value:
             if not state.execute.completed:
                 return False, "Execute 阶段未完成"
+
+            # 增强检查：验证代码标注
+            code_result = self._check_code_annotations()
+            if not code_result[0]:
+                return False, code_result[1]
 
         return True, "可以进入"
 
@@ -345,6 +361,219 @@ class PhaseManager:
                 }
             }
         }
+
+    # ========== Review Comments 检查 ==========
+
+    def _check_review_comments(self, filename: str) -> Tuple[bool, str]:
+        """
+        检查 Markdown 文件中的 Review Comments 状态
+
+        Args:
+            filename: 文件名 (research.md 或 plan.md)
+
+        Returns:
+            (是否通过, 原因说明)
+        """
+        file_path = self.task_path / filename
+
+        if not file_path.exists():
+            return False, f"{filename} 不存在"
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # 解析 Review Comments
+            rc_result = self._parse_review_comments(content)
+
+            # 检查是否有 Review Comments（至少需要 1 条表示人类已审阅）
+            if rc_result['total'] == 0:
+                return False, f"{filename} 中没有任何 Review Comments，请人类先审阅并添加批注"
+
+            # 检查 CRITICAL 和 MAJOR 是否都已处理
+            unaddressed_critical = rc_result['critical_pending']
+            unaddressed_major = rc_result['major_pending']
+
+            if unaddressed_critical > 0:
+                return False, f"{filename} 中有 {unaddressed_critical} 个 CRITICAL Review Comment 未处理"
+
+            if unaddressed_major > 0:
+                return False, f"{filename} 中有 {unaddressed_major} 个 MAJOR Review Comment 未处理"
+
+            return True, f"{filename} 审阅通过"
+
+        except Exception as e:
+            return False, f"检查 {filename} 时出错: {str(e)}"
+
+    def _parse_review_comments(self, content: str) -> Dict:
+        """
+        解析 Markdown 内容中的 Review Comments
+
+        Review Comments 格式:
+        ### RC-1: 标题
+        > 严重程度: [CRITICAL/MAJOR/MINOR/SUGGEST]
+        > 状态: pending/addressed
+
+        Returns:
+            {
+                'total': 总数,
+                'critical_pending': CRITICAL 未处理数,
+                'major_pending': MAJOR 未处理数,
+                'comments': [...]
+            }
+        """
+        result = {
+            'total': 0,
+            'critical_pending': 0,
+            'major_pending': 0,
+            'comments': []
+        }
+
+        # 匹配 RC 块：### RC-N: ... 到下一个 ### 或 ---
+        rc_pattern = r'### (RC-\d+):.*?(?=### RC-|\n---|\n## |\Z)'
+        rc_blocks = re.findall(rc_pattern, content, re.DOTALL)
+
+        for block in re.finditer(rc_pattern, content, re.DOTALL):
+            block_text = block.group(0)
+            result['total'] += 1
+
+            # 提取严重程度
+            severity_match = re.search(r'严重程度:\s*\[(CRITICAL|MAJOR|MINOR|SUGGEST)\]', block_text)
+            severity = severity_match.group(1) if severity_match else 'MINOR'
+
+            # 提取状态
+            status_match = re.search(r'状态:\s*\[?(\w+)\]?', block_text)
+            status = status_match.group(1) if status_match else 'pending'
+
+            # 检查是否是 pending 状态
+            is_pending = status.lower() in ['pending', 'pending_ai_question']
+
+            if is_pending:
+                if severity == 'CRITICAL':
+                    result['critical_pending'] += 1
+                elif severity == 'MAJOR':
+                    result['major_pending'] += 1
+
+            result['comments'].append({
+                'severity': severity,
+                'status': status,
+                'pending': is_pending
+            })
+
+        return result
+
+    def _check_code_annotations(self) -> Tuple[bool, str]:
+        """
+        检查代码标注中是否有未处理的 CRITICAL/MAJOR
+
+        Returns:
+            (是否通过, 原因说明)
+        """
+        annotations_file = self.task_path / '.annotations' / 'code.json'
+
+        if not annotations_file.exists():
+            # 没有代码标注，允许通过
+            return True, "没有代码标注"
+
+        try:
+            with open(annotations_file, 'r', encoding='utf-8') as f:
+                all_annotations = json.load(f)
+
+            critical_pending = 0
+            major_pending = 0
+
+            for file_path, file_annotations in all_annotations.items():
+                for line_num, annotation in file_annotations.items():
+                    severity = annotation.get('type', annotation.get('severity', 'MINOR'))
+                    status = annotation.get('status', 'pending')
+
+                    if status.lower() in ['pending', 'pending_ai_question']:
+                        if severity == 'CRITICAL':
+                            critical_pending += 1
+                        elif severity == 'MAJOR':
+                            major_pending += 1
+
+            if critical_pending > 0:
+                return False, f"代码标注中有 {critical_pending} 个 CRITICAL 未处理"
+
+            if major_pending > 0:
+                return False, f"代码标注中有 {major_pending} 个 MAJOR 未处理"
+
+            return True, "代码标注检查通过"
+
+        except Exception as e:
+            return False, f"检查代码标注时出错: {str(e)}"
+
+    def get_review_status(self) -> Dict:
+        """
+        获取审阅状态摘要
+
+        Returns:
+            审阅状态信息
+        """
+        result = {
+            'research': {'has_rc': False, 'critical_pending': 0, 'major_pending': 0},
+            'plan': {'has_rc': False, 'critical_pending': 0, 'major_pending': 0},
+            'code': {'has_annotations': False, 'critical_pending': 0, 'major_pending': 0}
+        }
+
+        # 检查 research.md
+        research_path = self.task_path / 'research.md'
+        if research_path.exists():
+            with open(research_path, 'r', encoding='utf-8') as f:
+                rc = self._parse_review_comments(f.read())
+            result['research'] = {
+                'has_rc': rc['total'] > 0,
+                'critical_pending': rc['critical_pending'],
+                'major_pending': rc['major_pending'],
+                'total': rc['total']
+            }
+
+        # 检查 plan.md
+        plan_path = self.task_path / 'plan.md'
+        if plan_path.exists():
+            with open(plan_path, 'r', encoding='utf-8') as f:
+                rc = self._parse_review_comments(f.read())
+            result['plan'] = {
+                'has_rc': rc['total'] > 0,
+                'critical_pending': rc['critical_pending'],
+                'major_pending': rc['major_pending'],
+                'total': rc['total']
+            }
+
+        # 检查代码标注
+        annotations_file = self.task_path / '.annotations' / 'code.json'
+        if annotations_file.exists():
+            try:
+                with open(annotations_file, 'r', encoding='utf-8') as f:
+                    all_annotations = json.load(f)
+
+                critical_pending = 0
+                major_pending = 0
+                total = 0
+
+                for file_path, file_annotations in all_annotations.items():
+                    for line_num, annotation in file_annotations.items():
+                        total += 1
+                        severity = annotation.get('type', annotation.get('severity', 'MINOR'))
+                        status = annotation.get('status', 'pending')
+
+                        if status.lower() in ['pending', 'pending_ai_question']:
+                            if severity == 'CRITICAL':
+                                critical_pending += 1
+                            elif severity == 'MAJOR':
+                                major_pending += 1
+
+                result['code'] = {
+                    'has_annotations': total > 0,
+                    'critical_pending': critical_pending,
+                    'major_pending': major_pending,
+                    'total': total
+                }
+            except:
+                pass
+
+        return result
 
 
 def check_phase_for_file(task_path: str, file_path: str, project_root: str = None) -> tuple[bool, str]:
