@@ -142,12 +142,17 @@ N0mosAi Linter 系统的核心目标是实现 **"前置 Review"** -- 在代码�
 .claude/hooks/lib/
 ├── linter_engine.py          # 核心 Linter 引擎
 ├── utils.py                   # 工具函数
-└── rules/
-    ├── __init__.py
-    ├── base_rule.py           # 规则基类和数据结构
-    ├── layer1_syntax.py       # 第一层语法规则
-    ├── layer2_security.py     # 第二层安全规则
-    └── layer3_business.py     # 第三层业务规则
+├── rules/
+│   ├── __init__.py
+│   ├── base_rule.py           # 规则基类和数据结构
+│   ├── layer1_syntax.py       # 第一层语法规则
+│   ├── layer2_security.py     # 第二层安全规则
+│   └── layer3_business.py     # 第三层业务规则
+└── multilang/                 # 多语言支持模块
+    ├── __init__.py            # 模块导出
+    ├── language_detector.py   # 语言自动检测器
+    ├── tree_sitter_engine.py  # Tree-sitter AST 解析引擎
+    └── rulesets.py            # 分语言规则集
 ```
 
 ### 3.2 数据结构定义
@@ -658,6 +663,256 @@ def detect_language(file_path: str) -> Optional[str]:
         ...
     }
     return language_map.get(ext)
+```
+
+### 3.9 多语言支持模块 (multilang)
+
+**目录**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/multilang/`
+
+multilang 模块是 Linter 系统的多语言基础设施层，提供语言检测、AST 解析和分语言规则集管理。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   multilang 模块架构                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────┐    ┌─────────────────────┐        │
+│  │  LanguageDetector   │───▶│  TreeSitterEngine   │        │
+│  │   语言自动检测       │    │   AST 解析引擎       │        │
+│  └─────────────────────┘    └─────────────────────┘        │
+│           │                          │                      │
+│           ▼                          ▼                      │
+│  ┌─────────────────────────────────────────────────┐       │
+│  │                LanguageRuleSet                   │       │
+│  │  ┌───────────┬───────────┬───────────┬───────┐  │       │
+│  │  │ Python    │ JS/TS     │ Go        │ Java  │  │       │
+│  │  │ RuleSet   │ RuleSet   │ RuleSet   │RuleSet│  │       │
+│  │  │ (ruff)    │ (eslint)  │(golangci) │(check)│  │       │
+│  │  └───────────┴───────────┴───────────┴───────┘  │       │
+│  └─────────────────────────────────────────────────┘       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 3.9.1 LanguageDetector (语言检测器)
+
+**文件**: `multilang/language_detector.py`
+
+```python
+class Language(Enum):
+    """支持的编程语言"""
+    PYTHON = "python"
+    JAVASCRIPT = "javascript"
+    TYPESCRIPT = "typescript"
+    GO = "go"
+    JAVA = "java"
+    UNKNOWN = "unknown"
+
+
+class LanguageDetector:
+    """基于文件扩展名的语言自动检测器"""
+
+    def __init__(self, config_path: Optional[Path] = None):
+        """初始化语言检测器
+
+        Args:
+            config_path: 可选的配置文件路径 (.claude/rules/languages.yml)
+        """
+        self._ext_map = dict(DEFAULT_EXTENSION_MAP)
+        if config_path and config_path.exists():
+            self._load_config(config_path)
+
+    def detect(self, file_path: Path) -> Language:
+        """检测文件的编程语言"""
+        return self._ext_map.get(file_path.suffix, Language.UNKNOWN)
+```
+
+**扩展名映射**:
+
+| 扩展名 | 语言 |
+|--------|------|
+| `.py`, `.pyi` | Python |
+| `.js`, `.jsx` | JavaScript |
+| `.ts`, `.tsx` | TypeScript |
+| `.go` | Go |
+| `.java` | Java |
+
+#### 3.9.2 TreeSitterEngine (AST 解析引擎)
+
+**文件**: `multilang/tree_sitter_engine.py`
+
+提供统一的 AST 抽象层，支持跨语言的函数签名提取、导入分析和调用链追踪。
+
+```python
+@dataclass
+class UnifiedAST:
+    """统一 AST 抽象 — 跨语言通用结构"""
+    language: Language
+    functions: List[FunctionSignature] = field(default_factory=list)
+    imports: List[ImportInfo] = field(default_factory=list)
+    call_sites: List[CallSite] = field(default_factory=list)
+
+
+class TreeSitterEngine:
+    """Tree-sitter 多语言解析引擎
+
+    注意: 此实现需要 tree-sitter 和对应语言的绑定
+    如果未安装，将优雅降级到基础 AST 解析
+    """
+
+    def parse(self, source: bytes, language: Language) -> UnifiedAST:
+        """解析源代码，返回统一 AST"""
+        if not self._tree_sitter_available:
+            return self._fallback_parse(source, language)
+        # Tree-sitter 解析逻辑...
+
+    def _fallback_parse(self, source: bytes, language: Language) -> UnifiedAST:
+        """降级解析 - 使用 Python 内置 ast 模块"""
+        if language == Language.PYTHON:
+            return self._parse_python_fallback(source)
+        return UnifiedAST(language=language)
+```
+
+**核心数据结构**:
+
+```python
+@dataclass
+class FunctionSignature:
+    """函数签名"""
+    name: str
+    params: List[str]
+    return_type: Optional[str]
+    line_number: int
+
+
+@dataclass
+class ImportInfo:
+    """导入信息"""
+    module: str
+    names: List[str]
+    is_relative: bool
+    line_number: int
+
+
+@dataclass
+class CallSite:
+    """调用点"""
+    caller: str
+    callee: str
+    line_number: int
+```
+
+#### 3.9.3 LanguageRuleSet (分语言规则集)
+
+**文件**: `multilang/rulesets.py`
+
+为不同编程语言提供专门的 Linter 规则集。
+
+```python
+class PythonRuleSet(LanguageRuleSet):
+    """Python 规则集: ruff + bandit"""
+
+    def run(self, file_path: Path) -> List[LintResult]:
+        """运行 Python Linter"""
+        result = subprocess.run(
+            ['ruff', 'check', '--output-format=json', str(file_path)],
+            capture_output=True, text=True, timeout=30
+        )
+        # 解析 JSON 输出...
+
+
+class JSTypeScriptRuleSet(LanguageRuleSet):
+    """JS/TS 规则集: eslint + semgrep"""
+
+    def run(self, file_path: Path) -> List[LintResult]:
+        """运行 JS/TS Linter"""
+        result = subprocess.run(
+            ['eslint', '--format=json', str(file_path)],
+            capture_output=True, text=True, timeout=30
+        )
+        # 解析 JSON 输出...
+```
+
+**规则集注册表**:
+
+```python
+RULESET_REGISTRY = {
+    Language.PYTHON: PythonRuleSet,
+    Language.JAVASCRIPT: JSTypeScriptRuleSet,
+    Language.TYPESCRIPT: lambda: JSTypeScriptRuleSet(Language.TYPESCRIPT),
+    Language.GO: GoRuleSet,
+    Language.JAVA: JavaRuleSet,
+}
+```
+
+#### 3.9.4 multilang 与 Linter 系统的关系
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Linter 系统调用关系                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  AgentLinterEngine.run()                                        │
+│       │                                                          │
+│       ├─▶ utils.detect_language()      ← 基础检测               │
+│       │         │                                               │
+│       │         └─▶ 或使用 multilang.LanguageDetector           │
+│       │                    (更完整的语言检测)                    │
+│       │                                                          │
+│       ├─▶ Layer1 语法规则                                       │
+│       │         │                                               │
+│       │         ├─▶ RuffRule (Python)                          │
+│       │         │         │                                     │
+│       │         │         └─▶ 可调用 PythonRuleSet              │
+│       │         │                                               │
+│       │         └─▶ ESLintRule (JS/TS)                         │
+│       │                   │                                     │
+│       │                   └─▶ 可调用 JSTypeScriptRuleSet        │
+│       │                                                          │
+│       └─▶ Layer3 业务规则                                       │
+│                 │                                               │
+│                 └─▶ ModuleIsolationRule 等                      │
+│                           │                                     │
+│                           └─▶ 可使用 TreeSitterEngine           │
+│                                      提取 imports 进行检查       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**关键说明**:
+
+| 问题 | 答案 |
+|------|------|
+| **multilang 是否用于语法检查?** | ✅ 是的，但作为独立模块存在 |
+| **与 layer1_syntax.py 的关系?** | 平行关系，可互相调用 |
+| **当前集成状态** | 模块已实现，但 Linter Engine 未直接引用 |
+| **设计意图** | 为未来多语言扩展提供基础设施 |
+
+#### 3.9.5 使用示例
+
+```python
+from lib.multilang import LanguageDetector, TreeSitterEngine, get_ruleset
+
+# 语言检测
+detector = LanguageDetector()
+language = detector.detect(Path("src/auth/service.py"))
+# → Language.PYTHON
+
+# AST 解析
+engine = TreeSitterEngine()
+with open("src/auth/service.py", "rb") as f:
+    ast = engine.parse(f.read(), Language.PYTHON)
+
+# 提取函数签名
+functions = engine.extract_functions(ast)
+for func in functions:
+    print(f"{func.name}({', '.join(func.params)}) -> {func.return_type}")
+
+# 使用分语言规则集
+ruleset = get_ruleset(Language.PYTHON)
+results = ruleset.run(Path("src/auth/service.py"))
+for r in results:
+    print(f"[{r.severity}] {r.rule_id}: {r.message} (line {r.line_number})")
 ```
 
 ---
