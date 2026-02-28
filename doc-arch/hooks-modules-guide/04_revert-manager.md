@@ -10,7 +10,7 @@
 
 ### 1.1 设计目标
 
-Revert Manager 是 N0mosAi 框架中的代码回滚管理模块，其核心设计理念是 **"果断回滚，避免修补陷阱"**。
+Revert Manager 是 nOmOsAi 框架中的代码回滚管理模块，其核心设计理念是 **"果断回滚，避免修补陷阱"**。
 
 在 AI Agent 编码过程中，当发现方向性错误或严重问题时，传统做法是增量修补（patch），但这往往导致：
 - Token 消耗指数级增长
@@ -60,11 +60,11 @@ Revert Manager 提供了一种更高效的解决方案：**果断回滚到健康
 
 ### 2.1 架构定位
 
-Revert Manager 在 N0mosAi 整体架构中位于 **3.9 节**，属于 **Execute/Review 阶段** 的核心组件。
+Revert Manager 在 nOmOsAi 整体架构中位于 **3.9 节**，属于 **Execute/Review 阶段** 的核心组件。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         N0mosAi 五大循环机制                             │
+│                         nOmOsAi 五大循环机制                             │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  ┌──────────────┐                                                        │
@@ -151,7 +151,7 @@ Revert Manager 在 N0mosAi 整体架构中位于 **3.9 节**，属于 **Execute/
 ### 3.1 文件位置
 
 ```
-/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/revert_manager.py
+/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/revert_manager.py
 ```
 
 ### 3.2 类结构
@@ -997,7 +997,7 @@ def add_knowledge(self, category: str, title: str, content: str) -> bool:
 
 ### 8.1 模块价值
 
-Revert Manager 是 N0mosAi 框架中实现 **"果断回滚"** 理念的核心模块，主要价值包括：
+Revert Manager 是 nOmOsAi 框架中实现 **"果断回滚"** 理念的核心模块，主要价值包括：
 
 1. **节省 Token**: 回滚比增量修补节省 90% Token
 2. **保持代码质量**: 避免在错误基础上打补丁
@@ -1029,10 +1029,10 @@ Revert Manager 是 N0mosAi 框架中实现 **"果断回滚"** 理念的核心模
 
 | 文件 | 路径 |
 |------|------|
-| Revert Manager | `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/revert_manager.py` |
-| Why-First 引擎 | `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/why_first_engine.py` |
-| 架构设计文档 | `/Volumes/Under_M2/a056cw/cw_N0mosAi/doc-arch/agent-nomos-flow/03_System_Architecture.md` |
-| PRD 文档 | `/Volumes/Under_M2/a056cw/cw_N0mosAi/doc-arch/agent-nomos-flow/02_PRD.md` |
+| Revert Manager | `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/revert_manager.py` |
+| Why-First 引擎 | `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/why_first_engine.py` |
+| 架构设计文档 | `/Volumes/Under_M2/a056cw/cw_nOmOsAi/doc-arch/agent-nomos-flow/03_System_Architecture.md` |
+| PRD 文档 | `/Volumes/Under_M2/a056cw/cw_nOmOsAi/doc-arch/agent-nomos-flow/02_PRD.md` |
 
 ### B. 相关 User Stories
 
@@ -1051,4 +1051,4 @@ Revert Manager 是 N0mosAi 框架中实现 **"果断回滚"** 理念的核心模
 
 ---
 
-*文档由 Claude Code 生成，用于 N0mosAi Phase 2 模块讲解*
+*文档由 Claude Code 生成，用于 nOmOsAi Phase 2 模块讲解*

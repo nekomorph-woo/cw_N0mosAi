@@ -1,4 +1,4 @@
-# N0mosAi 安装指南
+# nOmOsAi 安装指南
 
 ## 环境要求
 
@@ -12,7 +12,7 @@
 
 ```bash
 git clone <repository-url>
-cd cw_N0mosAi
+cd cw_nOmOsAi
 ```
 
 ### 2. 安装依赖
@@ -36,7 +36,7 @@ pip install tree-sitter tree-sitter-languages
 
 ### 4. 配置
 
-N0mosAi 使用 `.claude/` 目录存储配置和 Hooks。
+nOmOsAi 使用 `.claude/` 目录存储配置和 Hooks。
 
 主要配置文件:
 - `.claude/settings.json`: Claude Code 设置
@@ -59,4 +59,4 @@ eslint --version
 
 ## 下一步
 
-参见 [快速开始](quickstart.md) 了解如何使用 N0mosAi。
+参见 [快速开始](quickstart.md) 了解如何使用 nOmOsAi。

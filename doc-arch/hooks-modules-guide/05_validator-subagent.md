@@ -10,7 +10,7 @@
 
 ### 1.1 设计目标
 
-Validator Subagent 是 N0mosAi 系统中的**双重验证机制**，其核心设计目标是：
+Validator Subagent 是 nOmOsAi 系统中的**双重验证机制**，其核心设计目标是：
 
 1. **专门挑刺** - 以批判性视角审查 Agent 生成的文档
 2. **发现幻觉** - 检测 AI 可能产生的理解偏差或虚构内容
@@ -66,7 +66,7 @@ Validator Subagent 是 N0mosAi 系统中的**双重验证机制**，其核心设
 
 ### 2.1 架构位置
 
-Validator Subagent 在 N0mosAi 架构中的位置：
+Validator Subagent 在 nOmOsAi 架构中的位置：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1106,7 +1106,7 @@ def generate_checklist(self) -> Dict[str, List[str]]:
 
 ### 10.1 模块价值
 
-Validator Subagent 是 N0mosAi 系统质量保障的关键组件：
+Validator Subagent 是 nOmOsAi 系统质量保障的关键组件：
 
 1. **结构化验证** - 确保文档包含必需章节
 2. **质量检查** - 检测内容完整性和质量

@@ -1,4 +1,4 @@
-# N0mosAi Linter 豁免配置
+# nOmOsAi Linter 豁免配置
 # 三级豁免机制: 行级 / 文件级 / 规则级
 
 version: "1.0"

@@ -1,6 +1,6 @@
 # Task Manager 模块详解
 
-> 本文档深入讲解 N0mosAi 任务管理系统的设计理念、架构实现和代码细节。
+> 本文档深入讲解 nOmOsAi 任务管理系统的设计理念、架构实现和代码细节。
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1.1 设计目标
 
-任务管理系统（Task Manager）是 N0mosAi 工作流框架的核心基础设施，旨在解决 AI Agent 编码过程中的以下痛点：
+任务管理系统（Task Manager）是 nOmOsAi 工作流框架的核心基础设施，旨在解决 AI Agent 编码过程中的以下痛点：
 
 | 痛点 | 解决方案 |
 |------|----------|
@@ -926,7 +926,7 @@ def _init_phase_state(self, task_path: Path, task_info: TaskInfo) -> None:
 
 ### 10.1 模块价值
 
-Task Manager 是 N0mosAi 工作流的"任务管家"，提供：
+Task Manager 是 nOmOsAi 工作流的"任务管家"，提供：
 
 - **隔离性**: 每个任务独立文件夹，上下文纯净
 - **可追溯性**: 所有状态持久化在文件中

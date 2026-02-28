@@ -1,5 +1,5 @@
 """
-N0mosAi Hooks Library
+nOmOsAi Hooks Library
 Agent 刚性工作流核心库
 """
 

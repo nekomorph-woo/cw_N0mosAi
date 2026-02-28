@@ -1,6 +1,6 @@
-# N0mosAi 诚实追问引擎 (Honest Questioning Engine) 详解
+# nOmOsAi 诚实追问引擎 (Honest Questioning Engine) 详解
 
-本文档详细讲解 N0mosAi 项目的诚实追问引擎设计与实现。
+本文档详细讲解 nOmOsAi 项目的诚实追问引擎设计与实现。
 
 ---
 
@@ -17,7 +17,7 @@
 │              传统 AI 交互 vs 诚实追问模式                       │
 ├──────────────────────────────────────────────────────────────┤
 │  传统方式:  用户需求 → Agent 回复 → 直接执行                   │
-│  N0mosAi:  用户需求 → Agent 回复 → 理解度检测 → 追问/执行      │
+│  nOmOsAi:  用户需求 → Agent 回复 → 理解度检测 → 追问/执行      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,7 +67,7 @@
 
 ### 2.1 架构文档中的设计要求
 
-来源: `/Volumes/Under_M2/a056cw/cw_N0mosAi/doc-arch/agent-nomos-flow/09_AdvancedFeatures_DevPlan.md:607-714`
+来源: `/Volumes/Under_M2/a056cw/cw_nOmOsAi/doc-arch/agent-nomos-flow/09_AdvancedFeatures_DevPlan.md:607-714`
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -163,7 +163,7 @@
 
 ### 3.2 数据结构定义
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/honest_questioning_engine.py`
+**文件**: `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/honest_questioning_engine.py`
 
 ```python
 class HonestQuestioningEngine:
@@ -912,7 +912,7 @@ class EnhancedPhaseManager:
 
 ### 7.1 clarify.md 定位
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/skills/nomos/prompts/clarify.md`
+**文件**: `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/skills/nomos/prompts/clarify.md`
 
 `clarify.md` 是一个 **轻量级需求澄清 prompt 模板**，用于 `/nomos:clarify` 命令。它与 HonestQuestioningEngine 的关系:
 
@@ -955,7 +955,7 @@ class EnhancedPhaseManager:
 
 ### 8.1 模块价值
 
-诚实追问引擎是 N0mosAi 系统质量保障的关键组件：
+诚实追问引擎是 nOmOsAi 系统质量保障的关键组件：
 
 1. **主动追问** - 自动检测 Agent 理解不足并生成追问
 2. **多维度检测** - 不确定关键词、模糊模式、反问检测
@@ -1040,4 +1040,4 @@ print(annotation)
 
 *文档版本: 1.0*
 *最后更新: 2026-02-27*
-*来源: N0mosAi 系统架构与代码分析*
+*来源: nOmOsAi 系统架构与代码分析*

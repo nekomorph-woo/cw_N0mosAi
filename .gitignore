@@ -323,7 +323,7 @@ test-results/
 .yarn-integrity
 
 # ================================
-# N0mosAi Specific
+# nOmOsAi Specific
 # ================================
 .claude/current-task.txt
 tasks/*/.annotations/

@@ -1,5 +1,5 @@
 #!/bin/bash
-# N0mosAi 一键设置脚本
+# nOmOsAi 一键设置脚本
 # 创建虚拟环境并安装所有依赖
 
 set -e
@@ -16,7 +16,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 VENV_PATH="$PROJECT_ROOT/.venv"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                    N0mosAi 环境设置                               ║${NC}"
+echo -e "${BLUE}║                    nOmOsAi 环境设置                               ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 

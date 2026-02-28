@@ -1,4 +1,4 @@
-# N0mosAi Makefile
+# nOmOsAi Makefile
 # 常用命令快捷方式
 
 .PHONY: setup activate lint bandit clean venv help test hooks-check
@@ -121,7 +121,7 @@ clean-all: clean clean-venv ## 清理所有（包括虚拟环境）
 
 help: ## 显示帮助信息
 	@echo ""
-	@echo "N0mosAi Makefile 命令"
+	@echo "nOmOsAi Makefile 命令"
 	@echo ""
 	@echo "  设置命令:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "    \033[36m%-15s\033[0m %s\n", $$1, $$2}' | head -5

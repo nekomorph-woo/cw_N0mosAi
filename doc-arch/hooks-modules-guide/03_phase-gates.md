@@ -10,7 +10,7 @@
 
 ### 1.1 设计理念
 
-Phase Gates（阶段门控）是 N0mosAi 系统的核心流程控制机制，将 AI Agent 的编码工作流从"软约束"转变为"物理门控"。其核心设计理念是：
+Phase Gates（阶段门控）是 nOmOsAi 系统的核心流程控制机制，将 AI Agent 的编码工作流从"软约束"转变为"物理门控"。其核心设计理念是：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -20,7 +20,7 @@ Phase Gates（阶段门控）是 N0mosAi 系统的核心流程控制机制，将
 │  传统 AI 编码流程（软约束）:                                          │
 │  用户需求 → AI 直接写代码 → 发现问题 → 增量修补 → 越改越乱            │
 │                                                                      │
-│  N0mosAi Phase Gates（刚性门控）:                                     │
+│  nOmOsAi Phase Gates（刚性门控）:                                     │
 │  用户需求 → Why-First → Research → Plan → Execute → Review          │
 │            ↑         ↑        ↑       ↑        ↑                    │
 │            └─────────┴────────┴───────┴────────┴── 每个阶段都有门控   │
@@ -48,7 +48,7 @@ Phase Gates（阶段门控）是 N0mosAi 系统的核心流程控制机制，将
 
 ### 2.1 架构定位
 
-Phase Gates 在 N0mosAi 系统架构中的位置：
+Phase Gates 在 nOmOsAi 系统架构中的位置：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -127,7 +127,7 @@ Phase Gates 在 N0mosAi 系统架构中的位置：
 
 ### 3.1 阶段总览
 
-N0mosAi 定义了 5 个阶段，形成严格的工作流：
+nOmOsAi 定义了 5 个阶段，形成严格的工作流：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -338,7 +338,7 @@ def generate_why_questions(self, task_name: str, description: str) -> List[str]:
 
 ### 4.1 PhaseManager 核心类
 
-**文件位置**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/phase_manager.py`
+**文件位置**: `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/phase_manager.py`
 
 **类结构**:
 ```python
@@ -1076,7 +1076,7 @@ print(f"代码标注待处理: {review_status['code']['critical_pending']}")
 
 ## 10. 总结
 
-Phase Gates 是 N0mosAi 系统的核心流程控制机制，通过以下方式实现"刚性质量保证"：
+Phase Gates 是 nOmOsAi 系统的核心流程控制机制，通过以下方式实现"刚性质量保证"：
 
 1. **强制顺序执行**: Research → Plan → Execute → Review
 2. **代码写入门控**: Research/Plan 阶段禁止写代码

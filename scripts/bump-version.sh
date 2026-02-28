@@ -1,5 +1,5 @@
 #!/bin/bash
-# N0mosAi 版本更新脚本
+# nOmOsAi 版本更新脚本
 # 更新所有版本号到指定版本
 #
 # 用法: ./scripts/bump-version.sh <version>
@@ -35,7 +35,7 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-echo -e "${YELLOW}=== N0mosAi 版本更新 ===${NC}"
+echo -e "${YELLOW}=== nOmOsAi 版本更新 ===${NC}"
 echo "目标版本: $VERSION"
 echo ""
 

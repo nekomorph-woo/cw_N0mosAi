@@ -1,5 +1,5 @@
 """
-N0mosAi Linter Rules
+nOmOsAi Linter Rules
 三层规则系统
 """
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# SessionStart Hook: 显示当前任务提示 + 注入 N0mosAi 规范
+# SessionStart Hook: 显示当前任务提示 + 注入 nOmOsAi 规范
 
 # ============================================================
 # 虚拟环境检测与激活
@@ -24,14 +24,14 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 # ============================================================
-# 注入 N0mosAi 输出规范
+# 注入 nOmOsAi 输出规范
 # ============================================================
 NOMOS_STYLE="$PROJECT_ROOT/.claude/rules/nomos-style.md"
 
 if [ -f "$NOMOS_STYLE" ]; then
     echo ""
     echo "╔════════════════════════════════════════════════════════════════════╗"
-    echo "║                    🤖 N0mosAi 规范已加载                           ║"
+    echo "║                    🤖 nOmOsAi 规范已加载                           ║"
     echo "╠════════════════════════════════════════════════════════════════════╣"
     echo "║  输出格式: ASCII 方框图 | Markdown 表格 | Emoji 状态              ║"
     echo "║  流程规范: Why-First → Research → Plan → Execute → Review         ║"

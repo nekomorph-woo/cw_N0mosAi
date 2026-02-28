@@ -10,7 +10,7 @@
 
 ### 1.1 设计理念
 
-Why-First 引擎是 N0mosAi 系统的"深度思考"模块，其核心设计理念是 **"强制 AI 在动手前先思考为什么"**。
+Why-First 引擎是 nOmOsAi 系统的"深度思考"模块，其核心设计理念是 **"强制 AI 在动手前先思考为什么"**。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -20,7 +20,7 @@ Why-First 引擎是 N0mosAi 系统的"深度思考"模块，其核心设计理�
 │  传统 AI 编码模式（"想当然"模式）:                                    │
 │  用户需求 → AI 立即开始写代码 → 发现问题 → 增量修补 → 越改越乱        │
 │                                                                      │
-│  N0mosAi Why-First 模式（深度思考模式）:                              │
+│  nOmOsAi Why-First 模式（深度思考模式）:                              │
 │  用户需求 → Why 问题生成 → 深度思考 → 知识沉淀 → Research → ...      │
 │              ↑                              │                        │
 │              └──────── 从 project-why.md 加载历史 ────┘              │
@@ -75,7 +75,7 @@ Why-First 引擎是 N0mosAi 系统的"深度思考"模块，其核心设计理�
 
 ### 2.1 架构定位
 
-Why-First 引擎在 N0mosAi 系统架构中的位置：
+Why-First 引擎在 nOmOsAi 系统架构中的位置：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -129,19 +129,19 @@ Why-First 引擎在 N0mosAi 系统架构中的位置：
 
 ```markdown
 ---
-project: N0mosAi
+project: nOmOsAi
 created: 2026-02-26
 version: 0.1.0
 status: active
 ---
 
-# Project Why - N0mosAi 项目知识库
+# Project Why - nOmOsAi 项目知识库
 
 本文档记录项目的核心决策、经验教训和重要知识。
 
 ## 核心理念
 
-### 为什么需要 N0mosAi？
+### 为什么需要 nOmOsAi？
 
 **时间**: 2026-02-26
 
@@ -203,7 +203,7 @@ status: active
 
 ### 3.2 WhyFirstEngine 类结构
 
-**文件位置**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/why_first_engine.py`
+**文件位置**: `/Volumes/Under_M2/a056cw/cw_nOmOsAi/.claude/hooks/lib/why_first_engine.py`
 
 ```python
 class WhyFirstEngine:
@@ -342,7 +342,7 @@ def add_knowledge(self, category: str, title: str, content: str) -> bool:
 
 | 分类 | 用途 | 示例 |
 |------|------|------|
-| **核心理念** | 项目的核心价值观和设计理念 | "为什么需要 N0mosAi" |
+| **核心理念** | 项目的核心价值观和设计理念 | "为什么需要 nOmOsAi" |
 | **架构决策** | 重要的技术架构决策及其理由 | "为什么选择 Hooks 而非 Prompt" |
 | **经验教训** | 失败案例和学到的教训 | "必须走 Repository 层" |
 | **常见问题** | 常见问题及解决方案 | "如何处理跨模块依赖" |
@@ -1308,7 +1308,7 @@ def generate_ai_questions(self, task_name: str, description: str,
 **当前实现** (`nomos-session-start.sh`):
 
 ```bash
-# SessionStart Hook: 显示当前任务提示 + 注入 N0mosAi 规范
+# SessionStart Hook: 显示当前任务提示 + 注入 nOmOsAi 规范
 # ...
 echo "║  流程规范: Why-First → Research → Plan → Execute → Review         ║"
 # ...
@@ -1343,7 +1343,7 @@ fi
 
 ### 9.1 核心价值
 
-Why-First 引擎是 N0mosAi 系统的"深度思考"模块，通过以下方式提升 AI 编码质量：
+Why-First 引擎是 nOmOsAi 系统的"深度思考"模块，通过以下方式提升 AI 编码质量：
 
 1. **强制深度思考**: 通过 Why 问题迫使 AI 在动手前思考
 2. **知识沉淀**: 每次任务的决策和教训都沉淀到 project-why.md
@@ -1414,4 +1414,4 @@ Why-First 引擎是 N0mosAi 系统的"深度思考"模块，通过以下方式�
 
 *本文档由 Claude Opus 4.6 生成*
 *生成时间: 2026-02-27*
-*来源: N0mosAi 系统架构与代码分析*
+*来源: nOmOsAi 系统架构与代码分析*

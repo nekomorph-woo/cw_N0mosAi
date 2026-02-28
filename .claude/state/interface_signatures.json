@@ -1,0 +1,46 @@
+{
+  "src__core__auth.py": {
+    "func:authenticate": {
+      "type": "function",
+      "name": "authenticate",
+      "params": [
+        "user",
+        "password"
+      ],
+      "return_type": null,
+      "line": 2,
+      "signature": "authenticate(user, password) -> None"
+    },
+    "class:AuthService": {
+      "type": "class",
+      "name": "AuthService",
+      "methods": [
+        "login",
+        "logout"
+      ],
+      "line": 6,
+      "signature": "class AuthService(login, logout)"
+    },
+    "func:login": {
+      "type": "function",
+      "name": "login",
+      "params": [
+        "self",
+        "token"
+      ],
+      "return_type": null,
+      "line": 7,
+      "signature": "login(self, token) -> None"
+    },
+    "func:logout": {
+      "type": "function",
+      "name": "logout",
+      "params": [
+        "self"
+      ],
+      "return_type": null,
+      "line": 9,
+      "signature": "logout(self) -> None"
+    }
+  }
+}
