@@ -26,12 +26,14 @@ class RuleSpec:
 
     def __init__(self, index: int, description: str, handler_type: str = "command",
                  severity: str = "warning", target_files: List[str] = None,
-                 details: str = ""):
+                 scope: str = "", code_features: str = "", details: str = ""):
         self.index = index
         self.description = description
         self.handler_type = handler_type
         self.severity = severity
         self.target_files = target_files or []
+        self.scope = scope  # 适用范围 (自然语言描述)
+        self.code_features = code_features  # 代码特征
         self.details = details
 
         # 缓存规则名称
@@ -193,6 +195,8 @@ class RuleGenerator:
                     "handler": "command",
                     "severity": "warning",
                     "files": [],
+                    "scope": "",  # 适用范围 (自然语言描述)
+                    "code_features": "",  # 代码特征
                     "details": ""
                 }
                 i += 1
@@ -215,6 +219,8 @@ class RuleGenerator:
                     "handler": "command",
                     "severity": "warning",
                     "files": [],
+                    "scope": "",  # 适用范围 (自然语言描述)
+                    "code_features": "",  # 代码特征
                     "details": ""
                 }
 
@@ -259,6 +265,27 @@ class RuleGenerator:
                         files = files.split("`")[1].split("`")[0]
                     current_rule["files"] = [f.strip() for f in files.split(",")]
 
+                elif "**文件匹配**:" in attr_line or "文件匹配:" in attr_line:
+                    # 新格式: 文件匹配
+                    files = attr_line.split(":", 1)[1].strip()
+                    if "`" in files:
+                        files = files.split("`")[1].split("`")[0]
+                    current_rule["files"] = [f.strip() for f in files.split(",")]
+
+                elif "**适用范围**:" in attr_line or "适用范围:" in attr_line:
+                    # 新格式: 适用范围 (自然语言描述)
+                    scope = attr_line.split(":", 1)[1].strip()
+                    # 移除可能的 markdown 粗体标记
+                    scope = scope.replace("**", "").strip()
+                    current_rule["scope"] = scope
+
+                elif "**代码特征**:" in attr_line or "代码特征:" in attr_line:
+                    # 新格式: 代码特征
+                    features = attr_line.split(":", 1)[1].strip()
+                    # 移除可能的 markdown 粗体标记
+                    features = features.replace("**", "").strip()
+                    current_rule["code_features"] = features
+
                 elif "**详细说明**:" in attr_line or "详细说明:" in attr_line:
                     # 详细说明可能跨多行
                     detail_lines = []
@@ -291,6 +318,8 @@ class RuleGenerator:
                 handler_type=rule.get("handler", "command"),
                 severity=rule.get("severity", "warning"),
                 target_files=rule.get("files", []),
+                scope=rule.get("scope", ""),
+                code_features=rule.get("code_features", ""),
                 details=rule.get("details", "")
             ))
 
@@ -351,11 +380,21 @@ class RuleGenerator:
             f"严重程度: {rule_spec.severity}",
         ]
 
-        if rule_spec.target_files:
-            parts.append(f"目标文件: {', '.join(rule_spec.target_files)}")
+        # 适用范围 (自然语言描述)
+        if rule_spec.scope:
+            parts.append(f"\n## 适用范围\n{rule_spec.scope}")
 
+        # 文件匹配模式
+        if rule_spec.target_files:
+            parts.append(f"\n## 文件匹配\n{', '.join(rule_spec.target_files)}")
+
+        # 代码特征
+        if rule_spec.code_features:
+            parts.append(f"\n## 代码特征\n{rule_spec.code_features}")
+
+        # 详细说明
         if rule_spec.details:
-            parts.append(f"\n详细说明:\n{rule_spec.details}")
+            parts.append(f"\n## 详细说明\n{rule_spec.details}")
 
         # 查找并添加相关示例
         example = self._find_relevant_example(rule_spec)

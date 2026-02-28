@@ -146,17 +146,21 @@ COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的
    - FileMatcher: 文件匹配工具 (用于 should_check)
    - RuleContext: 规则上下文
 
-4. **检查逻辑**:
+4. **规则范围理解**:
+   - **适用范围**: 用户描述的代码范围 (如 "API 层代码"、"所有 Python 文件")
+   - **文件匹配**: 具体的 glob 模式 (如 `src/api/**/*.py`)
+   - **代码特征**: 进一步限定检查目标的特征 (如 "带路由装饰器的函数")
+   - 如果"文件匹配"为空，根据"适用范围"推断合理的模式
+
+5. **should_check 实现**:
+   - 第一层: 使用 FileMatcher.match_patterns() 过滤文件
+   - 如果有"代码特征"，在 check() 中进一步用 AST 验证
+
+6. **check 实现**:
    - 使用 ASTUtils.parse() 解析代码
-   - 使用 ASTUtils.find_functions() / find_classes() 查找目标
+   - 根据"代码特征"过滤目标 (如查找带特定装饰器的函数)
    - 实现具体的检查逻辑
    - 返回 DynamicViolation 列表
-
-5. **文件过滤** (should_check):
-   - 使用 FileMatcher.match_patterns() 实现文件匹配
-   - 支持的 glob 模式: `*.py`, `src/**/*.py`, `*.ts,*.tsx`
-   - 如果目标文件为空，则检查所有文件
-   - 示例: `FileMatcher.match_patterns(file_path, ["*.py"])`
 
 ## 输出格式
 
@@ -188,18 +192,23 @@ PROMPT_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的�
    - FileMatcher: 文件匹配工具 (用于 should_check)
    - RuleContext: 规则上下文
 
-4. **检查逻辑**:
+4. **规则范围理解**:
+   - **适用范围**: 用户描述的代码范围 (如 "API 层代码"、"所有 Python 文件")
+   - **文件匹配**: 具体的 glob 模式 (如 `src/api/**/*.py`)
+   - **代码特征**: 进一步限定检查目标的特征 (如 "带路由装饰器的函数")
+   - 如果"文件匹配"为空，根据"适用范围"推断合理的模式
+
+5. **should_check 实现**:
+   - 第一层: 使用 FileMatcher.match_patterns() 过滤文件
+   - 如果有"代码特征"，在 check() 中进一步验证
+
+6. **检查逻辑**:
    - 实现 _should_ai_check() 快速预检
-   - 实现 _build_prompt() 构建 AI prompt
-   - 添加 few-shot 示例到 prompt
+   - 实现 _build_prompt() 构建 AI prompt，将"适用范围"和"代码特征"融入 prompt
    - 实现 _parse_ai_result() 解析 AI 返回
 
-5. **文件过滤** (should_check):
-   - 使用 FileMatcher.match_patterns() 实现文件匹配
-   - 支持的 glob 模式: `*.py`, `src/**/*.py`, `*.ts,*.tsx`
-
-6. **Prompt 设计**:
-   - 清晰描述规则要求
+7. **Prompt 设计**:
+   - 清晰描述规则要求，包含"适用范围"和"代码特征"信息
    - 提供正反示例
    - 明确输出格式 (JSON)
    - 处理边界情况

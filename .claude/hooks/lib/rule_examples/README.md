@@ -21,8 +21,11 @@
 #### 规则 1: 禁止使用 print 语句
 
 - **描述**: 业务代码中不应使用 print()，应使用 logger
+- **适用范围**: 所有业务代码 (测试代码除外)
+- **文件匹配**: `src/**/*.py` (AI 根据适用范围推断)
+- **代码特征**: 包含 print() 调用的代码
 - **参考示例**: logger_standard.py.example
-- **Handler**: `command`
+- **Handler**: `prompt`
 - **严重程度**: `warning`
 ```
 
@@ -45,7 +48,10 @@ handler_type = "command"
 description = "规则描述"
 
 config = {
-    # 规则配置参数
+    # 从 plan.md 的业务规则中提取:
+    "scope": "API 层代码",           # 适用范围 (自然语言描述)
+    "target_patterns": ["src/api/**/*.py"],  # 文件匹配模式
+    "code_features": "带路由装饰器的函数",     # 代码特征 (可选)
 }
 
 def check(file_path, content):
@@ -55,14 +61,20 @@ def check(file_path, content):
     # 使用 ASTUtils 解析代码
     tree = ASTUtils.parse(content, file_path)
 
-    # 实现检查逻辑...
-    # violations.append(DynamicViolation(...))
+    # 根据 config["code_features"] 进一步过滤
+    # 例如: 只检查带路由装饰器的函数
+    # for func in ASTUtils.find_functions(tree):
+    #     if has_route_decorator(func):
+    #         # 检查逻辑...
+    #         violations.append(DynamicViolation(...))
 
     return violations
 
 def should_check(file_path):
     """判断是否需要检查此文件"""
-    return True  # 或根据文件类型/路径判断
+    # 使用 FileMatcher 进行文件匹配
+    target_patterns = config.get("target_patterns", ["*.py"])
+    return FileMatcher.match_patterns(file_path, target_patterns)
 ```
 
 ### Prompt Handler 模板
@@ -75,7 +87,10 @@ handler_type = "prompt"
 description = "规则描述"
 
 config = {
-    # 规则配置参数
+    # 从 plan.md 的业务规则中提取:
+    "scope": "前端组件",              # 适用范围
+    "target_patterns": ["src/**/*.tsx"],  # 文件匹配模式
+    "code_features": "包含用户可见文本的组件",  # 代码特征
 }
 
 ai_client = AIClient()
