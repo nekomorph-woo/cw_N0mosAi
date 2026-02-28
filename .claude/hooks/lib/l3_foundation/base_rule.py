@@ -25,6 +25,7 @@ class RuleViolation:
     column: int            # 列号
     severity: Severity     # 严重程度
     suggestion: str = ""   # 修复建议
+    source: str = "layer3" # 来源 (layer1/layer2/layer3)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
@@ -34,7 +35,8 @@ class RuleViolation:
             "line": self.line,
             "column": self.column,
             "severity": self.severity.value,
-            "suggestion": self.suggestion
+            "suggestion": self.suggestion,
+            "source": self.source
         }
 
 

@@ -329,3 +329,4 @@ test-results/
 tasks/*/.annotations/
 tasks/*/
 !tasks/short-id-mapping.json
+/.claude/state/
