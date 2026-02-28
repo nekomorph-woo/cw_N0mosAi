@@ -1,5 +1,6 @@
 #!/bin/bash
 # PreToolUse Hook: 在 Write/Edit 前运行 Linter 和阶段检查
+# 已集成 Layer 3 动态规则加载
 
 set -e
 
@@ -109,20 +110,50 @@ case "$FILE_PATH" in
     ;;
 esac
 
-# 运行 AgentLinterEngine
+# 运行 AgentLinterEngine (集成动态规则和预制规则)
 RESULT=$($PYTHON_BIN -c "
-import sys, json
+import sys, json, os
 sys.path.insert(0, '.claude/hooks')
 
 try:
     from lib.linter_engine import AgentLinterEngine
     from lib.rules.layer1_syntax import RuffRule, ESLintRule
     from lib.rules.layer2_security import BanditRule
+    # 从预制规则导入
+    from lib.rules.layer3_business import (
+        ModuleIsolationRule, I18nRule, LoggerRule, InterfaceProtectionRule
+    )
+    # 从 l3_foundation 导入动态规则加载
+    from lib.l3_foundation import load_rules_from_task, RuleContext
 
     engine = AgentLinterEngine()
+
+    # Layer 1: 语法规则
     engine.register_rule(RuffRule())
     engine.register_rule(ESLintRule())
+
+    # Layer 2: 安全规则
     engine.register_rule(BanditRule())
+
+    # Layer 3: 预制业务规则 (默认配置)
+    # 这些规则可以通过 plan.md 的 custom_rules 配置启用
+    # engine.register_rule(I18nRule())
+    # engine.register_rule(LoggerRule())
+    # engine.register_rule(ModuleIsolationRule())
+    # engine.register_rule(InterfaceProtectionRule())
+
+    # Layer 3: 动态业务规则 (从 task/rules/ 加载)
+    context = RuleContext()
+    if context.task_dir:
+        try:
+            dynamic_rules = load_rules_from_task(context.task_dir, strict_mode=False)
+            for rule in dynamic_rules:
+                # 检查规则是否适用于当前文件
+                if rule.should_check('$FILE_PATH'):
+                    engine.register_rule(rule)
+        except Exception as e:
+            # 动态规则加载失败不影响其他规则
+            print(f'[动态规则加载警告] {str(e)}', file=sys.stderr)
 
     # 从 stdin 读取内容
     tool_input = json.loads('''$TOOL_INPUT''')
@@ -133,6 +164,7 @@ try:
     print(json.dumps(result.to_json()))
 except Exception as e:
     # 如果 Linter 执行失败，记录错误但不阻塞
+    import traceback
     print(json.dumps({
         'passed': True,
         'file_path': '$FILE_PATH',
@@ -154,7 +186,8 @@ result = json.load(sys.stdin)
 violations = result['violations']
 msg = 'Linter 检查未通过:\n'
 for v in violations:
-    msg += f\"  - [{v['severity']}] {v['rule']}: {v['message']} (line {v['line']})\n\"
+    source_prefix = f\"[{v.get('source', 'unknown')}] \" if v.get('source') else ''
+    msg += f\"  - [{v['severity']}] {source_prefix}{v['rule']}: {v['message']} (line {v['line']})\n\"
     if v.get('suggestion'):
         msg += f\"    建议: {v['suggestion']}\n\"
 output = {'decision': 'reject', 'message': msg}

@@ -1,305 +1,51 @@
 """
-第三层业务规则 (Layer 3 Business Rules)
+第三层业务规则 - 预制规则集 (Layer 3 Preset Rules)
 
-支持两种 Handler 类型:
-- Command Handler: 静态检查 (正则、AST)
-- Prompt Handler: 语义判断 (调用 AI)
+这些是通用的预制规则，适用于大多数项目。
+项目特定的动态规则请使用 l3_foundation.rule_generator 从 plan.md 生成。
+
+预制规则:
+- ModuleIsolationRule: 模块隔离检查
+- I18nRule: 国际化检查
+- LoggerRule: Logger 规范检查
+- InterfaceProtectionRule: 接口保护检查
 """
 
 import os
 import re
 import ast
 import json
-import yaml
-import hashlib
-import time
-import ssl
-import urllib.request
-import urllib.error
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from .base_rule import BaseRule, RuleViolation, Severity
+
+# 从 l3_foundation 导入基础类
+from ..l3_foundation import BaseRule, RuleViolation, Severity
+from ..l3_foundation import AIClient, ASTUtils
 
 
 # =============================================================================
-# Layer 3 基类
+# 预制规则 1: 模块隔离规则
 # =============================================================================
 
-class Layer3Rule(BaseRule):
-    """第三层业务规则基类"""
-
-    layer = 3
-    handler_type: str = "command"  # "command" / "prompt" / "agent"
-
-    def __init__(self, config: Dict[str, Any] = None):
-        self.config = config or {}
-
-
-# =============================================================================
-# AI Client - 轻量级 AI 调用客户端
-# =============================================================================
-
-class AIClient:
-    """
-    轻量级 AI 客户端 - 零配置设计
-
-    环境变量 (优先级递减):
-      API Key: ANTHROPIC_API_KEY > NOMOS_API_KEY > CLAUDE_API_KEY
-      Base URL: ANTHROPIC_BASE_URL > NOMOS_API_BASE_URL
-      Model: DEFAULT_HAIKU_MODEL > NOMOS_HAIKU_MODEL > 默认值
-      Timeout: NOMOS_AI_TIMEOUT (默认 30 秒)
-    """
-
-    _instance = None
-    _initialized = False
-
-    # 默认配置
-    DEFAULT_MODEL = "claude-3-5-haiku-20241022"
-    DEFAULT_BASE_URL = "https://api.anthropic.com"
-    DEFAULT_TIMEOUT = 30
-    MAX_RETRIES = 3
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        if self._initialized:
-            return
-
-        # 读取 API Key (四选一)
-        self.api_key = (
-            os.environ.get("ANTHROPIC_API_KEY") or
-            os.environ.get("ANTHROPIC_AUTH_TOKEN") or  # 兼容某些客户端
-            os.environ.get("NOMOS_API_KEY") or
-            os.environ.get("CLAUDE_API_KEY")
-        )
-
-        # 读取 Base URL (可选)
-        self.base_url = (
-            os.environ.get("ANTHROPIC_BASE_URL") or
-            os.environ.get("NOMOS_API_BASE_URL") or
-            self.DEFAULT_BASE_URL
-        )
-
-        # 读取 Model (可选)
-        self.model = (
-            os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL") or
-            os.environ.get("DEFAULT_HAIKU_MODEL") or
-            os.environ.get("NOMOS_HAIKU_MODEL") or
-            self.DEFAULT_MODEL
-        )
-
-        # 读取超时
-        try:
-            self.timeout = int(os.environ.get("NOMOS_AI_TIMEOUT", str(self.DEFAULT_TIMEOUT)))
-        except ValueError:
-            self.timeout = self.DEFAULT_TIMEOUT
-
-        # 可用性标志
-        self._available = self.api_key is not None
-
-        # 简单内存缓存 (hash -> result)
-        self._cache: Dict[str, Dict] = {}
-        self._cache_max_size = 100
-
-        self._initialized = True
-
-    @property
-    def available(self) -> bool:
-        """AI 服务是否可用"""
-        return self._available
-
-    def call(self, prompt: str, content: str) -> Optional[Dict]:
-        """
-        调用 AI 进行判断 (带重试机制)
-
-        Args:
-            prompt: 系统提示词
-            content: 待分析的代码内容
-
-        Returns:
-            解析后的 JSON 结果, 或 None (调用失败时)
-        """
-        if not self._available:
-            return None
-
-        # 检查缓存
-        cache_key = hashlib.md5(f"{prompt}:{content}".encode()).hexdigest()
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-
-        # 构建请求
-        full_prompt = f"{prompt}\n\n---\n代码:\n```\n{content}\n```"
-
-        request_body = {
-            "model": self.model,
-            "max_tokens": 512,
-            "messages": [{"role": "user", "content": full_prompt}]
-        }
-
-        url = f"{self.base_url.rstrip('/')}/v1/messages"
-
-        # 重试机制
-        last_error = None
-        for attempt in range(self.MAX_RETRIES):
-            try:
-                result = self._make_request(url, request_body)
-
-                # 尝试解析 JSON
-                try:
-                    parsed = json.loads(result)
-                except json.JSONDecodeError:
-                    # 尝试提取 markdown 代码块中的 JSON
-                    import re as _re
-                    json_match = _re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result)
-                    if json_match:
-                        try:
-                            parsed = json.loads(json_match.group(1))
-                        except json.JSONDecodeError:
-                            parsed = {"raw_response": result, "violations": []}
-                    else:
-                        # AI 返回非 JSON, 包装成标准格式
-                        parsed = {"raw_response": result, "violations": []}
-
-                # 写入缓存
-                self._cache[cache_key] = parsed
-                if len(self._cache) > self._cache_max_size:
-                    # 简单 LRU: 清空一半
-                    keys = list(self._cache.keys())
-                    for k in keys[:len(keys)//2]:
-                        del self._cache[k]
-
-                return parsed
-
-            except (urllib.error.URLError, urllib.error.HTTPError,
-                    KeyError, TimeoutError, Exception) as e:
-                last_error = e
-                # 重试前等待 (指数退避)
-                if attempt < self.MAX_RETRIES - 1:
-                    time.sleep(1 * (attempt + 1))
-                continue
-
-        # 所有重试失败
-        return None
-
-    def _make_request(self, url: str, body: Dict) -> str:
-        """发起 HTTP 请求"""
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode('utf-8'),
-            headers={
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            method="POST"
-        )
-
-        # 创建 SSL 上下文 (处理证书验证问题)
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-
-        with urllib.request.urlopen(req, timeout=self.timeout, context=ssl_context) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            return result["content"][0]["text"]
-
-
-# =============================================================================
-# Prompt Handler 基类
-# =============================================================================
-
-class PromptHandler(Layer3Rule):
-    """
-    Prompt Handler 基类 - 支持智能语义判断
-
-    子类需要实现:
-      - ai_prompt: 返回 AI 提示词
-      - parse_ai_result(): 解析 AI 返回结果
-      - fallback_check(): 正则降级检查
-    """
-
-    handler_type = "prompt"
-
-    # 共享的 AI 客户端 (单例)
-    _ai_client: Optional[AIClient] = None
-
-    @classmethod
-    def get_ai_client(cls) -> AIClient:
-        """获取共享 AI 客户端"""
-        if cls._ai_client is None:
-            cls._ai_client = AIClient()
-        return cls._ai_client
-
-    @property
-    def ai_prompt(self) -> str:
-        """子类实现: 返回 AI 提示词"""
-        raise NotImplementedError
-
-    def parse_ai_result(self, result: Dict, file_path: str,
-                        content: str) -> List[RuleViolation]:
-        """子类实现: 解析 AI 返回结果"""
-        raise NotImplementedError
-
-    def fallback_check(self, file_path: str,
-                       content: str) -> List[RuleViolation]:
-        """子类实现: 正则降级检查"""
-        return []
-
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """智能检查: AI 优先, 正则降级"""
-
-        # 快速预检: 确定性场景直接返回
-        quick_result = self._quick_check(file_path, content)
-        if quick_result is not None:
-            return quick_result
-
-        # 尝试 AI 判断
-        ai_client = self.get_ai_client()
-        if ai_client.available:
-            ai_result = ai_client.call(self.ai_prompt, content)
-            if ai_result is not None:
-                return self.parse_ai_result(ai_result, file_path, content)
-
-        # 降级到正则
-        return self.fallback_check(file_path, content)
-
-    def _quick_check(self, file_path: str,
-                     content: str) -> Optional[List[RuleViolation]]:
-        """
-        快速预检 - 确定性场景跳过 AI
-
-        返回:
-          - 非空列表: 有违规
-          - 空列表: 无违规
-          - None: 不确定, 需要 AI 判断
-        """
-        return None  # 默认不确定
-
-
-# =============================================================================
-# 具体规则实现
-# =============================================================================
-
-class ModuleIsolationRule(Layer3Rule):
+class ModuleIsolationRule(BaseRule):
     """模块隔离规则 - Command Handler
 
     检查模块间 import 是否符合隔离规则
+
+    配置:
+      - allowed_imports: ["src.core", "src.utils"]
+      - forbidden_imports: ["src.internal"]
     """
 
     name = "module_isolation"
+    layer = 3
     handler_type = "command"
     description = "检查模块间 import 是否符合隔离规则"
 
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """检查 import 路径是否在允许列表中
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__(config)
 
-        config:
-          allowed_imports: ["src.core", "src.utils"]
-          forbidden_imports: ["src.internal"]
-        """
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
         violations = []
 
         if not file_path.endswith('.py'):
@@ -344,57 +90,91 @@ class ModuleIsolationRule(Layer3Rule):
 
         return violations
 
+    def should_check(self, file_path: str) -> bool:
+        return file_path.endswith('.py')
 
-class I18nRule(PromptHandler):
-    """国际化规则 - 智能版
+
+# =============================================================================
+# 预制规则 2: 国际化规则
+# =============================================================================
+
+class I18nRule(BaseRule):
+    """国际化规则 - Prompt Handler
 
     检查 UI 相关代码是否使用 i18n
+
+    配置:
+      - target_dirs: ["src/ui", "src/components"]
+      - exclude_patterns: ["*.test.py"]
+      - i18n_function: "_t" (默认)
     """
 
     name = "i18n_required"
+    layer = 3
+    handler_type = "prompt"
     description = "检查 UI 代码是否使用 i18n"
 
-    @property
-    def ai_prompt(self) -> str:
-        return """你是代码审查专家。检查代码中的硬编码字符串。
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__(config)
+        self.ai_client = AIClient()
 
-规则:
-1. 用户可见的 UI 文本必须使用 i18n 函数包装
-2. 日志/调试信息可以硬编码
-3. 错误消息应该使用 i18n
-4. 注释中的字符串不需要处理
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+        violations = []
 
-返回 JSON 格式:
-{
-  "violations": [
-    {"line": 10, "text": "Hello World", "reason": "UI文本未国际化"}
-  ]
-}
+        # 快速预检
+        if not self._should_check(file_path, content):
+            return violations
 
-如果没有违规, 返回: {"violations": []}"""
+        # AI 判断 (如果可用)
+        if self.ai_client.available:
+            prompt = self._build_prompt()
+            result = self.ai_client.call(prompt, content)
+            if result:
+                return self._parse_ai_result(result)
 
-    def _quick_check(self, file_path: str,
-                     content: str) -> Optional[List[RuleViolation]]:
-        """快速预检: 没有字符串字面量则直接通过"""
+        # 降级到正则检查
+        return self._fallback_check(file_path, content)
+
+    def _should_check(self, file_path: str, content: str) -> bool:
+        """快速预检"""
         # 检查文件是否在目标目录中
         target_dirs = self.config.get('target_dirs', [])
         if target_dirs and not any(file_path.startswith(d) for d in target_dirs):
-            return []  # 不在目标目录, 直接通过
+            return False
 
         # 检查是否在排除模式中
         exclude_patterns = self.config.get('exclude_patterns', [])
         for pattern in exclude_patterns:
             if re.match(pattern.replace('*', '.*'), os.path.basename(file_path)):
-                return []  # 排除的文件, 直接通过
+                return False
 
         # 没有长字符串字面量, 直接通过
         if not re.search(r'["\'][^"\']{10,}["\']', content):
-            return []
+            return False
 
-        return None  # 需要 AI 判断
+        return True
 
-    def parse_ai_result(self, result: Dict, file_path: str,
-                        content: str) -> List[RuleViolation]:
+    def _build_prompt(self) -> str:
+        """构建 AI prompt"""
+        i18n_func = self.config.get('i18n_function', '_t')
+        return f"""你是代码审查专家。检查代码中的硬编码字符串。
+
+规则:
+1. 用户可见的 UI 文本必须使用 {i18n_func}() 函数包装
+2. 日志/调试信息可以硬编码
+3. 错误消息应该使用 i18n
+4. 注释中的字符串不需要处理
+
+返回 JSON 格式:
+{{
+  "violations": [
+    {{"line": 10, "text": "Hello World", "reason": "UI文本未国际化"}}
+  ]
+}}
+
+如果没有违规, 返回: {{"violations": []}}"""
+
+    def _parse_ai_result(self, result: Dict) -> List[RuleViolation]:
         """解析 AI 返回结果"""
         violations = []
         i18n_func = self.config.get('i18n_function', '_t')
@@ -415,9 +195,8 @@ class I18nRule(PromptHandler):
 
         return violations
 
-    def fallback_check(self, file_path: str,
-                       content: str) -> List[RuleViolation]:
-        """正则降级 (原有逻辑)"""
+    def _fallback_check(self, file_path: str, content: str) -> List[RuleViolation]:
+        """正则降级检查"""
         violations = []
         i18n_func = self.config.get('i18n_function', '_t')
         string_pattern = r'["\']([^"\']{10,})["\']'
@@ -446,17 +225,61 @@ class I18nRule(PromptHandler):
         return violations
 
 
-class LoggerRule(PromptHandler):
-    """Logger 规范规则 - 智能版
+# =============================================================================
+# 预制规则 3: Logger 规范规则
+# =============================================================================
+
+class LoggerRule(BaseRule):
+    """Logger 规范规则 - Prompt Handler
 
     检查是否使用标准 logger 而非 print
+
+    配置:
+      - allow_print_in: ["tests", "scripts"]
+      - logger_module: "logging" (默认)
     """
 
     name = "logger_standard"
+    layer = 3
+    handler_type = "prompt"
     description = "检查是否使用标准 logger"
 
-    @property
-    def ai_prompt(self) -> str:
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__(config)
+        self.ai_client = AIClient()
+
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+        violations = []
+
+        # 快速预检
+        if not self._should_check(file_path, content):
+            return violations
+
+        # AI 判断 (如果可用)
+        if self.ai_client.available:
+            prompt = self._build_prompt()
+            result = self.ai_client.call(prompt, content)
+            if result:
+                return self._parse_ai_result(result)
+
+        # 降级到正则检查
+        return self._fallback_check(file_path, content)
+
+    def _should_check(self, file_path: str, content: str) -> bool:
+        """快速预检"""
+        # 检查是否在允许 print 的目录中
+        allow_print_in = self.config.get('allow_print_in', [])
+        if any(file_path.startswith(d) for d in allow_print_in):
+            return False
+
+        # 没有 print() 调用, 直接通过
+        if not re.search(r'\bprint\s*\(', content):
+            return False
+
+        return True
+
+    def _build_prompt(self) -> str:
+        """构建 AI prompt"""
         return """你是代码审查专家。检查代码中的 print() 使用情况。
 
 规则:
@@ -473,22 +296,7 @@ class LoggerRule(PromptHandler):
 
 如果没有违规, 返回: {"violations": []}"""
 
-    def _quick_check(self, file_path: str,
-                     content: str) -> Optional[List[RuleViolation]]:
-        """快速预检: 没有 print() 则直接通过"""
-        # 检查是否在允许 print 的目录中
-        allow_print_in = self.config.get('allow_print_in', [])
-        if any(file_path.startswith(d) for d in allow_print_in):
-            return []  # 允许的目录, 直接通过
-
-        # 没有 print() 调用, 直接通过
-        if not re.search(r'\bprint\s*\(', content):
-            return []
-
-        return None  # 需要 AI 判断
-
-    def parse_ai_result(self, result: Dict, file_path: str,
-                        content: str) -> List[RuleViolation]:
+    def _parse_ai_result(self, result: Dict) -> List[RuleViolation]:
         """解析 AI 返回结果"""
         violations = []
         logger_module = self.config.get('logger_module', 'logging')
@@ -508,9 +316,8 @@ class LoggerRule(PromptHandler):
 
         return violations
 
-    def fallback_check(self, file_path: str,
-                       content: str) -> List[RuleViolation]:
-        """正则降级 (原有逻辑)"""
+    def _fallback_check(self, file_path: str, content: str) -> List[RuleViolation]:
+        """正则降级检查"""
         violations = []
         logger_module = self.config.get('logger_module', 'logging')
 
@@ -534,7 +341,11 @@ class LoggerRule(PromptHandler):
         return violations
 
 
-class InterfaceProtectionRule(Layer3Rule):
+# =============================================================================
+# 预制规则 4: 接口保护规则
+# =============================================================================
+
+class InterfaceProtectionRule(BaseRule):
     """接口保护规则 - Command Handler
 
     检查 Protected Interface 签名是否被未声明修改
@@ -543,6 +354,7 @@ class InterfaceProtectionRule(Layer3Rule):
     """
 
     name = "interface_protection"
+    layer = 3
     handler_type = "command"
     description = "检查 Protected Interface 签名是否被修改"
 
@@ -615,47 +427,41 @@ class InterfaceProtectionRule(Layer3Rule):
         """提取当前代码的函数/类签名"""
         signatures = {}
 
-        # 统一使用 ast 模块 (更可靠，支持函数和类)
-        try:
-            tree = ast.parse(content)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
-                    params = [arg.arg for arg in node.args.args]
-                    return_type = ast.unparse(node.returns) if node.returns else None
-                    sig_str = f"{node.name}({', '.join(params)}) -> {return_type or 'None'}"
-                    signatures[f"func:{node.name}"] = {
-                        "type": "function",
-                        "name": node.name,
-                        "params": params,
-                        "return_type": return_type,
-                        "line": node.lineno,
-                        "signature": sig_str
-                    }
+        # 使用 ASTUtils 解析
+        tree = ASTUtils.parse(content)
+        if not tree:
+            return signatures
 
-                if isinstance(node, ast.ClassDef):
-                    # 类签名: 方法列表
-                    methods = [n.name for n in node.body if isinstance(n, ast.FunctionDef)]
-                    sig_str = f"class {node.name}({', '.join(methods)})"
-                    signatures[f"class:{node.name}"] = {
-                        "type": "class",
-                        "name": node.name,
-                        "methods": methods,
-                        "line": node.lineno,
-                        "signature": sig_str
-                    }
-        except SyntaxError:
-            pass
+        # 提取函数签名
+        for func in ASTUtils.find_functions(tree):
+            params = [arg.arg for arg in func.args.args]
+            return_type = ast.unparse(func.returns) if func.returns else None
+            sig_str = f"{func.name}({', '.join(params)}) -> {return_type or 'None'}"
+            signatures[f"func:{func.name}"] = {
+                "type": "function",
+                "name": func.name,
+                "params": params,
+                "return_type": return_type,
+                "line": func.lineno,
+                "signature": sig_str
+            }
+
+        # 提取类签名
+        for cls in ASTUtils.find_classes(tree):
+            methods = ASTUtils.get_class_methods(cls)
+            sig_str = f"class {cls.name}({', '.join(methods)})"
+            signatures[f"class:{cls.name}"] = {
+                "type": "class",
+                "name": cls.name,
+                "methods": methods,
+                "line": cls.lineno,
+                "signature": sig_str
+            }
 
         return signatures
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """检查 Protected Interface 签名变更
-
-        config:
-          protected_files: ["src/core/interfaces.py"]
-          protected_functions: ["authenticate", "authorize"]
-          protected_classes: ["UserService"]
-        """
+        """检查 Protected Interface 签名变更"""
         violations = []
 
         protected_files = self.config.get('protected_files', [])
@@ -744,58 +550,34 @@ class InterfaceProtectionRule(Layer3Rule):
         self._save_signatures()
 
 
-class DynamicRuleLoader:
-    """从 plan.md 动态加载第三层规则"""
+# =============================================================================
+# 预制规则注册表
+# =============================================================================
 
-    RULE_REGISTRY = {
-        "module_isolation": ModuleIsolationRule,
-        "i18n_required": I18nRule,
-        "logger_standard": LoggerRule,
-        "interface_protection": InterfaceProtectionRule,
-    }
+PRESET_RULES = {
+    "module_isolation": ModuleIsolationRule,
+    "i18n_required": I18nRule,
+    "logger_standard": LoggerRule,
+    "interface_protection": InterfaceProtectionRule,
+}
 
-    def load_from_plan(self, plan_path: str) -> List[Layer3Rule]:
-        """从 plan.md 的 YAML Frontmatter 读取 custom_rules
 
-        Returns:
-            实例化的第三层规则列表
-        """
-        if not os.path.exists(plan_path):
-            return []
+def get_preset_rule(name: str, config: Dict[str, Any] = None) -> Optional[BaseRule]:
+    """获取预制规则实例
 
-        with open(plan_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+    Args:
+        name: 规则名称
+        config: 规则配置
 
-        # 提取 YAML Frontmatter
-        if not content.startswith('---'):
-            return []
+    Returns:
+        规则实例，不存在返回 None
+    """
+    rule_class = PRESET_RULES.get(name)
+    if rule_class:
+        return rule_class(config)
+    return None
 
-        parts = content.split('---', 2)
-        if len(parts) < 3:
-            return []
 
-        try:
-            frontmatter = yaml.safe_load(parts[1])
-        except yaml.YAMLError:
-            return []
-
-        if not frontmatter or 'custom_rules' not in frontmatter:
-            return []
-
-        # 实例化规则
-        rules = []
-        for rule_config in frontmatter['custom_rules']:
-            rule_name = rule_config.get('rule')
-            config = rule_config.get('config', {})
-
-            if rule_name in self.RULE_REGISTRY:
-                rule_class = self.RULE_REGISTRY[rule_name]
-                rules.append(rule_class(config))
-
-        return rules
-
-    def register_rule(self, name: str, rule_class: type) -> None:
-        """注册自定义规则到注册表"""
-        if not issubclass(rule_class, Layer3Rule):
-            raise ValueError(f"{rule_class} 必须继承自 Layer3Rule")
-        self.RULE_REGISTRY[name] = rule_class
+def list_preset_rules() -> List[str]:
+    """列出所有可用的预制规则"""
+    return list(PRESET_RULES.keys())
