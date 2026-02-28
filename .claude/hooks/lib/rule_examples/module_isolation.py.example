@@ -10,7 +10,8 @@ description = "检查模块间 import 是否符合隔离规则"
 # 规则配置 (从 plan.md 读取)
 config = {
     'allowed_imports': ["src.core", "src.utils"],
-    'forbidden_imports': ["src.internal"]
+    'forbidden_imports': ["src.internal"],
+    'target_patterns': ["*.py"]  # 目标文件模式
 }
 
 def check(file_path, content):
@@ -71,4 +72,6 @@ def check(file_path, content):
 
 def should_check(file_path):
     """判断是否需要检查此文件"""
-    return file_path.endswith('.py')
+    # 使用 FileMatcher 进行文件匹配
+    target_patterns = config.get('target_patterns', ["*.py"])
+    return FileMatcher.match_patterns(file_path, target_patterns)

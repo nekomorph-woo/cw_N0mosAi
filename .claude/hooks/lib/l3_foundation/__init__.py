@@ -14,7 +14,7 @@ l3_foundation - Layer 3 基础能力层
   - DynamicRuleLoader: 动态规则加载器
 """
 
-from .dynamic_rule import DynamicRule, DynamicViolation, Severity
+from .dynamic_rule import DynamicRule, DynamicViolation, Severity, FileMatcher
 from .ai_client import AIClient
 from .ast_utils import ASTUtils
 from .prompt_builder import PromptBuilder, PromptTemplate
@@ -26,6 +26,7 @@ __all__ = [
     "DynamicRule",
     "DynamicViolation",
     "Severity",
+    "FileMatcher",
     "AIClient",
     "ASTUtils",
     "PromptBuilder",

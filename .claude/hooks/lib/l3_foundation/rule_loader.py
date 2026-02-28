@@ -320,6 +320,7 @@ class DynamicRuleLoader:
             "DynamicRule": dynamic_rule.DynamicRule,
             "DynamicViolation": dynamic_rule.DynamicViolation,
             "Severity": dynamic_rule.Severity,
+            "FileMatcher": dynamic_rule.FileMatcher,
             "AIClient": ai_client.AIClient,
             "ASTUtils": ast_utils.ASTUtils,
             "PromptBuilder": prompt_builder.PromptBuilder,

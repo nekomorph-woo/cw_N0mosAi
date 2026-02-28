@@ -143,6 +143,7 @@ COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的
    - DynamicViolation: 动态规则违规记录
    - Severity: 严重程度
    - ASTUtils: AST 解析工具
+   - FileMatcher: 文件匹配工具 (用于 should_check)
    - RuleContext: 规则上下文
 
 4. **检查逻辑**:
@@ -151,9 +152,11 @@ COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的
    - 实现具体的检查逻辑
    - 返回 DynamicViolation 列表
 
-5. **文件过滤**:
-   - 实现 should_check() 方法
-   - 只检查相关文件类型
+5. **文件过滤** (should_check):
+   - 使用 FileMatcher.match_patterns() 实现文件匹配
+   - 支持的 glob 模式: `*.py`, `src/**/*.py`, `*.ts,*.tsx`
+   - 如果目标文件为空，则检查所有文件
+   - 示例: `FileMatcher.match_patterns(file_path, ["*.py"])`
 
 ## 输出格式
 
@@ -182,6 +185,7 @@ PROMPT_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的�
    - Severity: 严重程度
    - AIClient: AI 调用客户端
    - PromptBuilder: Prompt 构建器
+   - FileMatcher: 文件匹配工具 (用于 should_check)
    - RuleContext: 规则上下文
 
 4. **检查逻辑**:
@@ -190,7 +194,11 @@ PROMPT_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的�
    - 添加 few-shot 示例到 prompt
    - 实现 _parse_ai_result() 解析 AI 返回
 
-5. **Prompt 设计**:
+5. **文件过滤** (should_check):
+   - 使用 FileMatcher.match_patterns() 实现文件匹配
+   - 支持的 glob 模式: `*.py`, `src/**/*.py`, `*.ts,*.tsx`
+
+6. **Prompt 设计**:
    - 清晰描述规则要求
    - 提供正反示例
    - 明确输出格式 (JSON)

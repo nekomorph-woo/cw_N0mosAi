@@ -147,4 +147,4 @@ def _get_current_task_dir():
 
 def should_check(file_path):
     """判断是否需要检查此文件"""
-    return file_path.endswith('.py')
+    return FileMatcher.match_patterns(file_path, config.get("target_patterns", ["*.py"]))
