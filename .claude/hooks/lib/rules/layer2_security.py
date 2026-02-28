@@ -6,7 +6,8 @@ import subprocess
 import json
 import os
 import sys
-from typing import List
+from typing import List, Optional
+from pathlib import Path
 from .base_rule import BaseRule, RuleViolation, Severity
 from ..utils import create_temp_file
 
@@ -342,6 +343,291 @@ console.log(JSON.stringify(messages));
             "security/detect-disable-mustache-escape": "不要禁用模板引擎的 HTML 转义",
         }
         return suggestions.get(rule_id, "请参考 ESLint Security 文档")
+
+
+class TreeSitterSecurityRule(BaseRule):
+    """Tree-sitter 通用安全检测 (Tier 2 语言)
+
+    使用 AST 分析检测跨语言的安全问题模式，无需安装额外工具。
+    适用于 Go, Java, Rust, Ruby, PHP 等语言。
+    """
+
+    name = "tree-sitter-security"
+    layer = 2
+    description = "通用安全模式检测 (Tree-sitter AST)"
+    # 支持 Tier 2 语言 + Python/JS (作为原生工具的补充)
+    supported_languages = [
+        "go", "java", "rust", "c", "cpp", "c_sharp",
+        "ruby", "php", "swift", "kotlin", "scala",
+        "lua", "perl", "r",
+        # 也支持 Python/JS，但原生工具优先
+        "python", "javascript", "typescript"
+    ]
+
+    # 危险函数调用模式 (函数名 -> 安全建议)
+    DANGEROUS_FUNCTIONS = {
+        # 代码执行
+        "eval": "避免动态代码执行，可能导致代码注入",
+        "exec": "避免动态代码执行，可能导致代码注入",
+        "execfile": "避免动态代码执行，可能导致代码注入",
+        "compile": "注意动态编译的安全性",
+        # 命令执行
+        "system": "避免直接执行系统命令，验证输入",
+        "popen": "避免直接执行系统命令，验证输入",
+        "subprocess": "验证命令参数，使用 shell=False",
+        "shell_exec": "避免直接执行 shell 命令",
+        "passthru": "避免直接执行系统命令",
+        "Runtime.getRuntime": "避免直接执行系统命令",
+        "os/exec": "验证命令参数",
+        "Command::new": "验证命令参数",
+        # 文件操作
+        "unlink": "验证文件路径，防止路径遍历",
+        "remove": "验证文件路径，防止路径遍历",
+        "delete": "验证文件路径，防止路径遍历",
+        "rmdir": "验证文件路径，防止路径遍历",
+    }
+
+    # 硬编码密钥正则模式 (支持多种赋值语法: =, :=, ->, :)
+    SECRET_PATTERNS = [
+        (r'(?i)(password|passwd|pwd)\s*:?=\s*["\'][^"\']{4,}["\']', "硬编码密码"),
+        (r'(?i)(api_key|apikey|api-key)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码 API Key"),
+        (r'(?i)(secret|secret_key)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码密钥"),
+        (r'(?i)(token|access_token)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码 Token"),
+        (r'(?i)(private_key|privatekey)\s*:?=\s*["\'][^"\']{20,}["\']', "硬编码私钥"),
+        (r'["\']sk-[a-zA-Z0-9]{20,}["\']', "疑似 OpenAI API Key"),
+        (r'["\']AKIA[0-9A-Z]{16}["\']', "疑似 AWS Access Key"),
+        (r'["\']ghp_[a-zA-Z0-9]{36}["\']', "疑似 GitHub Token"),
+    ]
+
+    # SQL 注入模式
+    SQL_INJECTION_PATTERNS = [
+        (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*\+', "SQL 字符串拼接"),
+        (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*format\(', "SQL 格式化字符串"),
+        (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*\%', "SQL 格式化字符串"),
+        (r'f["\'].*\{.*\}.*["\'].*\b(SELECT|INSERT|UPDATE|DELETE|DROP)\b', "SQL f-string 注入"),
+    ]
+
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+        """执行安全检查"""
+        violations = []
+
+        # 1. 检测硬编码密钥 (正则匹配)
+        violations.extend(self._check_secrets(content))
+
+        # 2. 检测 SQL 注入模式 (正则匹配)
+        violations.extend(self._check_sql_injection(content))
+
+        # 3. 检测危险函数调用 (Tree-sitter AST 或 文本匹配)
+        violations.extend(self._check_dangerous_calls(content, file_path))
+
+        return violations
+
+    def _check_secrets(self, content: str) -> List[RuleViolation]:
+        """检测硬编码密钥"""
+        import re
+        violations = []
+        lines = content.split('\n')
+
+        for pattern, desc in self.SECRET_PATTERNS:
+            for i, line in enumerate(lines, 1):
+                # 跳过注释行
+                stripped = line.strip()
+                if stripped.startswith('#') or stripped.startswith('//') or stripped.startswith('*'):
+                    continue
+
+                if re.search(pattern, line):
+                    violations.append(RuleViolation(
+                        rule="tree-sitter:hardcoded-secret",
+                        message=f"{desc} 检测到敏感信息",
+                        line=i,
+                        column=0,
+                        severity=Severity.ERROR,
+                        suggestion="使用环境变量或密钥管理服务存储敏感信息",
+                        source="layer2"
+                    ))
+                    break  # 每种模式每行只报告一次
+
+        return violations
+
+    def _check_sql_injection(self, content: str) -> List[RuleViolation]:
+        """检测 SQL 注入模式"""
+        import re
+        violations = []
+        lines = content.split('\n')
+
+        for pattern, desc in self.SQL_INJECTION_PATTERNS:
+            for i, line in enumerate(lines, 1):
+                if re.search(pattern, line, re.IGNORECASE):
+                    violations.append(RuleViolation(
+                        rule="tree-sitter:sql-injection",
+                        message=f"{desc} 可能导致 SQL 注入",
+                        line=i,
+                        column=0,
+                        severity=Severity.ERROR,
+                        suggestion="使用参数化查询或 ORM",
+                        source="layer2"
+                    ))
+                    break
+
+        return violations
+
+    def _check_dangerous_calls(self, content: str, file_path: str) -> List[RuleViolation]:
+        """检测危险函数调用"""
+        violations = []
+
+        # 尝试使用 Tree-sitter 解析
+        ast_result = self._parse_with_tree_sitter(content, file_path)
+
+        if ast_result:
+            # 使用 AST 检测
+            violations.extend(self._find_dangerous_calls_in_ast(ast_result, content))
+        else:
+            # 降级到文本匹配
+            violations.extend(self._find_dangerous_calls_text(content))
+
+        return violations
+
+    def _parse_with_tree_sitter(self, content: str, file_path: str):
+        """使用 Tree-sitter 解析代码"""
+        try:
+            from ..multilang import LanguageDetector, TreeSitterEngine, Language
+
+            detector = LanguageDetector()
+            language = detector.detect(Path(file_path))
+
+            engine = TreeSitterEngine()
+            if not engine.is_language_supported(language):
+                return None
+
+            ok, _ = engine.check_syntax(content, language)
+            if not ok:
+                return None
+
+            # 返回解析树用于分析
+            return {
+                'engine': engine,
+                'language': language,
+                'content': content
+            }
+        except Exception:
+            return None
+
+    def _find_dangerous_calls_in_ast(self, ast_result: dict, content: str) -> List[RuleViolation]:
+        """在 AST 中查找危险调用"""
+        violations = []
+        lines = content.split('\n')
+
+        try:
+            from tree_sitter import Parser
+
+            engine = ast_result['engine']
+            language = ast_result['language']
+
+            if language not in engine._languages_available:
+                return violations
+
+            ts_lang = engine._languages_available[language]
+            parser = Parser(ts_lang)
+            tree = parser.parse(content.encode('utf-8'))
+            root = tree.root_node
+
+            # 遍历 AST 查找调用表达式
+            self._traverse_for_calls(root, lines, violations)
+
+        except Exception:
+            pass
+
+        return violations
+
+    def _traverse_for_calls(self, node, lines: List[str], violations: List[RuleViolation]):
+        """递归遍历 AST 查找函数调用"""
+        # 检查是否是调用节点
+        node_type = node.type
+
+        # 不同语言的调用表达式类型
+        call_types = [
+            'call_expression', 'function_call', 'method_call',
+            'call', 'invocation_expression', 'method_invocation'
+        ]
+
+        if node_type in call_types:
+            # 提取函数名
+            func_name = self._extract_function_name(node)
+            if func_name and func_name in self.DANGEROUS_FUNCTIONS:
+                line = node.start_point[0] + 1
+                violations.append(RuleViolation(
+                    rule=f"tree-sitter:dangerous-call",
+                    message=f"危险函数调用: {func_name}()",
+                    line=line,
+                    column=node.start_point[1] + 1,
+                    severity=Severity.WARNING,
+                    suggestion=self.DANGEROUS_FUNCTIONS[func_name],
+                    source="layer2"
+                ))
+
+        # 递归检查子节点
+        for child in node.children:
+            self._traverse_for_calls(child, lines, violations)
+
+    def _extract_function_name(self, node) -> Optional[str]:
+        """从调用节点提取函数名"""
+        # 获取节点的文本
+        try:
+            text = node.text.decode('utf-8') if hasattr(node, 'text') else ''
+        except Exception:
+            return None
+
+        # 查找第一个子节点（通常是函数名）
+        for child in node.children:
+            child_type = child.type
+            # 标识符类型
+            if child_type in ['identifier', 'simple_identifier', 'name', 'IDENTIFIER']:
+                try:
+                    return child.text.decode('utf-8')
+                except Exception:
+                    pass
+            # 成员访问 (如 Runtime.getRuntime)
+            elif child_type in ['member_expression', 'field_access', 'scoped_identifier']:
+                try:
+                    return child.text.decode('utf-8')
+                except Exception:
+                    pass
+
+        # 回退：从文本提取
+        import re
+        match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*)\s*\(', text)
+        if match:
+            return match.group(1)
+
+        return None
+
+    def _find_dangerous_calls_text(self, content: str) -> List[RuleViolation]:
+        """文本模式匹配危险调用（降级方案）"""
+        import re
+        violations = []
+        lines = content.split('\n')
+
+        for i, line in enumerate(lines, 1):
+            # 跳过注释
+            stripped = line.strip()
+            if stripped.startswith('#') or stripped.startswith('//'):
+                continue
+
+            for func_name, suggestion in self.DANGEROUS_FUNCTIONS.items():
+                # 匹配函数调用模式
+                pattern = rf'\b{re.escape(func_name)}\s*\('
+                if re.search(pattern, line):
+                    violations.append(RuleViolation(
+                        rule="tree-sitter:dangerous-call",
+                        message=f"危险函数调用: {func_name}()",
+                        line=i,
+                        column=0,
+                        severity=Severity.WARNING,
+                        suggestion=suggestion,
+                        source="layer2"
+                    ))
+
+        return violations
 
 
 def _get_project_root() -> str:

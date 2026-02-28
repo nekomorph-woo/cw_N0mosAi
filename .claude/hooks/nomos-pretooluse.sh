@@ -152,7 +152,7 @@ def get_full_content_for_edit(file_path, old_string, new_string):
 try:
     from lib.linter_engine import AgentLinterEngine
     from lib.rules.layer1_syntax import RuffRule, ESLintRule, TreeSitterRule
-    from lib.rules.layer2_security import BanditRule, ESLintSecurityRule
+    from lib.rules.layer2_security import BanditRule, ESLintSecurityRule, TreeSitterSecurityRule
     # l3_foundation: 动态规则系统
     from lib.l3_foundation import load_rules_from_task, RuleContext
 
@@ -168,6 +168,7 @@ try:
     # Layer 2: 安全规则
     engine.register_rule(BanditRule())
     engine.register_rule(ESLintSecurityRule())
+    engine.register_rule(TreeSitterSecurityRule())
 
     # Layer 3: 动态业务规则 (从 task/rules/ 加载)
     # 不再有硬编码的预制规则，所有规则由用户在 plan.md 中定义
