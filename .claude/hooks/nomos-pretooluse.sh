@@ -111,9 +111,39 @@ case "$FILE_PATH" in
 esac
 
 # 运行 AgentLinterEngine (集成动态规则加载)
+# 方案 B: Edit 工具合并原文件内容后检查
 RESULT=$($PYTHON_BIN -c "
 import sys, json, os
 sys.path.insert(0, '.claude/hooks')
+
+def get_full_content_for_edit(file_path, old_string, new_string):
+    '''
+    获取 Edit 操作后的完整文件内容
+
+    策略:
+    1. 文件不存在 → 返回 new_string (新文件场景)
+    2. old_string 在文件中 → 替换后返回完整内容
+    3. old_string 不在文件中 → 返回 new_string (降级处理)
+    '''
+    # 文件不存在，这是新文件
+    if not os.path.exists(file_path):
+        return new_string
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            original = f.read()
+
+        # 检查 old_string 是否在文件中
+        if old_string and old_string in original:
+            # 执行替换，返回完整内容
+            return original.replace(old_string, new_string, 1)
+        else:
+            # old_string 不存在，降级为只检查 new_string
+            # 这种情况可能是 replace_all=True 或其他边界情况
+            return new_string
+    except Exception:
+        # 读取失败，降级为只检查 new_string
+        return new_string
 
 try:
     from lib.linter_engine import AgentLinterEngine
@@ -150,10 +180,26 @@ try:
     # 从 stdin 读取内容
     tool_input = json.loads('''$TOOL_INPUT''')
     file_path = tool_input.get('file_path', tool_input.get('path', ''))
-    content = tool_input.get('content', tool_input.get('new_string', ''))
 
-    result = engine.run(file_path, content)
-    print(json.dumps(result.to_json()))
+    # 判断工具类型，获取完整内容
+    if 'content' in tool_input:
+        # Write 工具: 直接使用 content
+        full_content = tool_input['content']
+    elif 'new_string' in tool_input:
+        # Edit 工具: 合并原文件内容
+        old_string = tool_input.get('old_string', '')
+        new_string = tool_input['new_string']
+        full_content = get_full_content_for_edit(file_path, old_string, new_string)
+    else:
+        # 未知工具类型，跳过检查
+        full_content = ''
+
+    if full_content:
+        result = engine.run(file_path, full_content)
+        print(json.dumps(result.to_json()))
+    else:
+        # 无内容，直接通过
+        print(json.dumps({'passed': True, 'file_path': file_path, 'violations': [], 'summary': '无内容，跳过检查'}))
 except Exception as e:
     # 如果 Linter 执行失败，记录错误但不阻塞
     import traceback

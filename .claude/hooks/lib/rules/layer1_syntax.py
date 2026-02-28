@@ -100,13 +100,29 @@ class RuffRule(BaseRule):
                 try:
                     ruff_output = json.loads(result.stdout)
                     for item in ruff_output:
+                        # 安全获取 location (可能为 None)
+                        location = item.get('location') or {}
+                        fix_info = item.get('fix') or {}
+
+                        # 判断严重程度
+                        # - E* (Pycodestyle 错误) → ERROR
+                        # - F* (Pyflakes 错误) → ERROR
+                        # - syntax 相关 (invalid-syntax 等) → ERROR
+                        # - 其他 → WARNING
+                        code = item.get('code', '')
+                        is_error = (
+                            code.startswith('E') or
+                            code.startswith('F') or
+                            'syntax' in code.lower()
+                        )
+
                         violations.append(RuleViolation(
-                            rule=f"ruff:{item.get('code', 'unknown')}",
+                            rule=f"ruff:{code}",
                             message=item.get('message', ''),
-                            line=item.get('location', {}).get('row', 0),
-                            column=item.get('location', {}).get('column', 0),
-                            severity=Severity.ERROR if item.get('code', '').startswith('E') else Severity.WARNING,
-                            suggestion=item.get('fix', {}).get('message', ''),
+                            line=location.get('row', 0),
+                            column=location.get('column', 0),
+                            severity=Severity.ERROR if is_error else Severity.WARNING,
+                            suggestion=fix_info.get('message', ''),
                             source="layer1"
                         ))
                 except json.JSONDecodeError:
