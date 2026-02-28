@@ -1,0 +1,74 @@
+# 示例规则: 模块隔离检查
+# 这是一个 Command Handler 示例，演示如何使用 AST 解析检查模块导入
+
+# 规则名称和元信息
+name = "module_isolation"
+layer = 3
+handler_type = "command"
+description = "检查模块间 import 是否符合隔离规则"
+
+# 规则配置 (从 plan.md 读取)
+config = {
+    'allowed_imports': ["src.core", "src.utils"],
+    'forbidden_imports': ["src.internal"]
+}
+
+def check(file_path, content):
+    """
+    检查代码是否违反模块隔离规则
+
+    Args:
+        file_path: 文件路径
+        content: 文件内容
+
+    Returns:
+        违规记录列表
+    """
+    violations = []
+
+    # 只检查 Python 文件
+    if not file_path.endswith('.py'):
+        return violations
+
+    allowed_imports = config.get('allowed_imports', [])
+    forbidden_imports = config.get('forbidden_imports', [])
+
+    # 使用 ASTUtils 提取导入语句
+    tree = ASTUtils.parse(content, file_path)
+    imports = ASTUtils.find_imports(tree)
+
+    for imp in imports:
+        module = imp.get('module', '')
+        line = imp.get('line', 0)
+
+        # 检查是否在禁止列表中
+        for forbidden in forbidden_imports:
+            if module.startswith(forbidden):
+                violations.append(RuleViolation(
+                    rule=name,
+                    message=f"禁止导入模块 '{module}'",
+                    line=line,
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion=f"请使用允许的模块: {', '.join(allowed_imports)}"
+                ))
+
+        # 检查是否在允许列表中
+        if allowed_imports:
+            is_allowed = any(module.startswith(allowed) for allowed in allowed_imports)
+            is_stdlib = not module.startswith('src') and not module.startswith('.')
+            if not is_allowed and not is_stdlib:
+                violations.append(RuleViolation(
+                    rule=name,
+                    message=f"模块 '{module}' 不在允许列表中",
+                    line=line,
+                    column=0,
+                    severity=Severity.WARNING,
+                    suggestion=f"允许的模块: {', '.join(allowed_imports)}"
+                ))
+
+    return violations
+
+def should_check(file_path):
+    """判断是否需要检查此文件"""
+    return file_path.endswith('.py')

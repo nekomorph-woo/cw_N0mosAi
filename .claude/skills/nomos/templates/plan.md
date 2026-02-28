@@ -36,11 +36,14 @@ current_phase: ""
 
 本项目的业务规则约束，将自动生成对应的 Linter 检查规则。
 
+💡 **提示**: 可以参考 `.claude/hooks/lib/rule_examples/` 中的示例规则。
+
 ### 3.1 规则列表
 
 #### 规则 1: [规则名称]
 
 - **描述**: [规则描述]
+- **参考示例**: [可选] 如: `module_isolation.py.example`
 - **Handler**: [command / prompt]
   - `command`: 静态检查 (AST/正则)
   - `prompt`: 语义检查 (AI 判断)
@@ -52,13 +55,25 @@ current_phase: ""
 #### 规则 2: [规则名称]
 
 - **描述**: [规则描述]
+- **参考示例**: [可选]
 - **Handler**: [command / prompt]
 - **严重程度**: [error / warning / info]
 - **目标文件**: [如: **/*.py]
 - **详细说明**:
   （详细描述规则要求和检查逻辑）
 
-### 3.2 规则元信息
+### 3.2 可用示例
+
+`.claude/hooks/lib/rule_examples/` 目录包含以下示例：
+
+| 示例文件 | Handler 类型 | 说明 |
+|---------|-------------|------|
+| `module_isolation.py.example` | Command | 模块隔离检查 |
+| `logger_standard.py.example` | Prompt | Logger 规范检查 |
+| `i18n_check.py.example` | Prompt | 国际化检查 |
+| `interface_protection.py.example` | Command | 接口保护检查 |
+
+### 3.3 规则元信息
 
 ```yaml
 # 以下元信息将自动添加到生成的规则脚本

@@ -357,7 +357,81 @@ class RuleGenerator:
         if rule_spec.details:
             parts.append(f"\n详细说明:\n{rule_spec.details}")
 
+        # 查找并添加相关示例
+        example = self._find_relevant_example(rule_spec)
+        if example:
+            parts.append(f"\n## 参考示例\n{example}")
+
         return "\n".join(parts)
+
+    def _find_relevant_example(self, rule_spec: RuleSpec) -> Optional[str]:
+        """
+        查找相关的规则示例
+
+        Args:
+            rule_spec: 规则规范
+
+        Returns:
+            示例代码，如果没有找到返回 None
+        """
+        # 示例文件映射
+        example_map = {
+            "module": "module_isolation.py.example",
+            "import": "module_isolation.py.example",
+            "isolation": "module_isolation.py.example",
+            "logger": "logger_standard.py.example",
+            "print": "logger_standard.py.example",
+            "i18n": "i18n_check.py.example",
+            "international": "i18n_check.py.example",
+            "interface": "interface_protection.py.example",
+            "signature": "interface_protection.py.example",
+        }
+
+        # 检查规则描述中是否包含关键词
+        description_lower = rule_spec.description.lower()
+        for keyword, example_file in example_map.items():
+            if keyword in description_lower:
+                return self._load_example(example_file)
+
+        return None
+
+    def _load_example(self, example_file: str) -> Optional[str]:
+        """
+        加载示例文件内容
+
+        Args:
+            example_file: 示例文件名
+
+        Returns:
+            示例内容，加载失败返回 None
+        """
+        import os
+        examples_dir = os.path.join(
+            os.path.dirname(__file__),
+            "..", "rule_examples"
+        )
+
+        example_path = os.path.join(examples_dir, example_file)
+        if not os.path.exists(example_path):
+            return None
+
+        try:
+            with open(example_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # 只取主要代码部分，移除注释
+                lines = []
+                for line in content.split('\n'):
+                    if line.strip() and not line.strip().startswith('#'):
+                        lines.append(line)
+                    elif line.strip().startswith('#') and '示例' in line:
+                        # 保留示例标题
+                        lines.append(line.replace('#', '##'))
+
+                return '\n'.join(lines[:30]) + '\n... (示例截断)'
+        except IOError:
+            return None
+
+        return None
 
     def save_rule_script(self, script: str, rule_spec: RuleSpec) -> Optional[str]:
         """

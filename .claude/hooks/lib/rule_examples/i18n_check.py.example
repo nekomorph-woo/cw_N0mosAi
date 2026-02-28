@@ -1,0 +1,117 @@
+# 示例规则: 国际化检查
+# 这是一个 Prompt Handler 示例，演示如何检查 UI 文本国际化
+
+name = "i18n_required"
+layer = 3
+handler_type = "prompt"
+description = "检查 UI 代码是否使用 i18n"
+
+config = {
+    'target_dirs': ["src/ui", "src/components"],
+    'i18n_function': '_t'
+}
+
+ai_client = AIClient()
+
+def check(file_path, content):
+    """智能检查: AI 优先, 正则降级"""
+    violations = []
+
+    if not _should_check(file_path, content):
+        return violations
+
+    if ai_client.available:
+        prompt = _build_prompt()
+        result = ai_client.call(prompt, content)
+        if result:
+            violations = _parse_ai_result(result)
+
+    if not violations:
+        violations = _fallback_check(file_path, content)
+
+    return violations
+
+def _should_check(file_path, content):
+    """快速预检"""
+    target_dirs = config.get('target_dirs', [])
+    if target_dirs and not any(file_path.startswith(d) for d in target_dirs):
+        return False
+
+    import re
+    if not re.search(r'["\'][^"\']{10,}["\']', content):
+        return False
+
+    return True
+
+def _build_prompt():
+    """构建 AI prompt"""
+    i18n_func = config.get('i18n_function', '_t')
+    return f"""你是代码审查专家。检查代码中的硬编码字符串。
+
+规则:
+1. 用户可见的 UI 文本必须使用 {i18n_func}() 函数包装
+2. 日志/调试信息可以硬编码
+3. 错误消息应该使用 i18n
+4. 注释中的字符串不需要处理
+
+返回 JSON 格式:
+{{
+  "violations": [
+    {{"line": 10, "text": "Hello World", "reason": "UI文本未国际化"}}
+  ]
+}}
+
+如果没有违规, 返回: {{"violations": []}}"""
+
+def _parse_ai_result(result):
+    """解析 AI 返回结果"""
+    import re
+    violations = []
+    i18n_func = config.get('i18n_function', '_t')
+
+    for item in result.get('violations', []):
+        line_num = item.get('line', 0)
+        text = item.get('text', '')
+        reason = item.get('reason', '硬编码字符串')
+
+        violations.append(RuleViolation(
+            rule=name,
+            message=f"{reason}: '{text[:30]}{'...' if len(text) > 30 else ''}'",
+            line=line_num,
+            column=0,
+            severity=Severity.WARNING,
+            suggestion=f"使用 {i18n_func}() 包装字符串"
+        ))
+
+    return violations
+
+def _fallback_check(file_path, content):
+    """正则降级检查"""
+    import re
+    violations = []
+    i18n_func = config.get('i18n_function', '_t')
+    string_pattern = r'["\']([^"\']{10,})["\']'
+
+    for line_num, line in enumerate(content.split('\n'), 1):
+        if line.strip().startswith('#') or '"""' in line or "'''" in line:
+            continue
+
+        matches = re.finditer(string_pattern, line)
+        for match in matches:
+            string_content = match.group(1)
+            if i18n_func not in line:
+                if ' ' in string_content and len(string_content) > 15:
+                    violations.append(RuleViolation(
+                        rule=name,
+                        message=f"可能存在硬编码的用户可见字符串: '{string_content[:30]}...'",
+                        line=line_num,
+                        column=0,
+                        severity=Severity.WARNING,
+                        suggestion=f"建议使用 {i18n_func}() 函数包裹字符串"
+                    ))
+
+    return violations
+
+def should_check(file_path):
+    """判断是否需要检查此文件"""
+    return file_path.endswith('.py')
