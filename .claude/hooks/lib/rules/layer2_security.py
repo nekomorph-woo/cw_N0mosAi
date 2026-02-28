@@ -198,3 +198,164 @@ class BanditRule(BaseRule):
         }
 
         return suggestions.get(test_id, "请参考 Bandit 文档")
+
+
+class ESLintSecurityRule(BaseRule):
+    """ESLint Security 插件封装 (JS/TS 安全检查)
+
+    使用 Node.js 脚本调用 ESLint Linter API，避免 CLI 路径限制
+    """
+
+    name = "eslint-security"
+    layer = 2
+    description = "JavaScript/TypeScript 安全漏洞扫描 (ESLint Security)"
+    supported_languages = ["javascript", "typescript"]
+
+    # 严重程度映射
+    SEVERITY_MAP = {
+        2: Severity.ERROR,    # ESLint error
+        1: Severity.WARNING,  # ESLint warn
+    }
+
+    # ESLint 检查脚本 (使用 Linter API with eslintrc mode)
+    ESLINT_SCRIPT = '''
+const { Linter } = require("eslint");
+const securityPlugin = require("eslint-plugin-security");
+
+// 使用 eslintrc 模式以支持 defineRule
+const linter = new Linter({ configType: "eslintrc" });
+
+// 注册 security 插件规则
+Object.entries(securityPlugin.rules).forEach(([name, rule]) => {
+    linter.defineRule(`security/${name}`, rule);
+});
+
+// 安全规则配置
+const config = {
+    rules: {
+        "security/detect-eval-with-expression": "error",
+        "security/detect-non-literal-require": "error",
+        "security/detect-non-literal-fs-filename": "warn",
+        "security/detect-non-literal-regexp": "warn",
+        "security/detect-unsafe-regex": "error",
+        "security/detect-object-injection": "warn",
+        "security/detect-child-process": "warn",
+        "security/detect-new-buffer": "error",
+        "security/detect-pseudoRandomBytes": "error",
+        "security/detect-possible-timing-attacks": "warn",
+        "security/detect-buffer-noassert": "warn",
+        "security/detect-disable-mustache-escape": "error",
+    }
+};
+
+// node -e 时，argv[1] 是第一个参数
+const code = process.argv[1] || "";
+
+const messages = linter.verify(code, config);
+console.log(JSON.stringify(messages));
+'''
+
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+        """调用 Node.js ESLint API 执行安全检查"""
+        violations = []
+
+        # 检查 node 和 eslint-plugin-security 是否可用
+        if not self._check_dependencies():
+            return [RuleViolation(
+                rule="eslint-security:not_found",
+                message="ESLint 或 eslint-plugin-security 未安装",
+                line=0,
+                column=0,
+                severity=Severity.WARNING,
+                suggestion="npm install eslint eslint-plugin-security",
+                source="layer2"
+            )]
+
+        try:
+            # 运行 Node.js 检查脚本
+            # node -e "script" <content> <file_path>
+            # process.argv[2] = content, process.argv[3] = file_path
+            result = subprocess.run(
+                ["node", "-e", self.ESLINT_SCRIPT, content],
+                capture_output=True,
+                text=True,
+                cwd=_get_project_root() or os.getcwd()
+            )
+
+            if result.stdout:
+                try:
+                    messages = json.loads(result.stdout)
+                    for msg in messages:
+                        rule_id = msg.get('ruleId', '')
+                        if not rule_id:
+                            continue
+
+                        severity_int = msg.get('severity', 1)
+                        severity = self.SEVERITY_MAP.get(severity_int, Severity.WARNING)
+
+                        violations.append(RuleViolation(
+                            rule=f"eslint:{rule_id}",
+                            message=msg.get('message', ''),
+                            line=msg.get('line', 0),
+                            column=msg.get('column', 0),
+                            severity=severity,
+                            suggestion=self._get_suggestion(rule_id),
+                            source="layer2"
+                        ))
+                except json.JSONDecodeError:
+                    pass
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            # 执行失败，返回警告但不阻塞
+            pass
+
+        return violations
+
+    def _check_dependencies(self) -> bool:
+        """检查 Node.js 和 eslint-plugin-security 是否可用"""
+        try:
+            # 检查 node
+            result = subprocess.run(
+                ["node", "-e", "require('eslint-plugin-security')"],
+                capture_output=True,
+                text=True,
+                cwd=_get_project_root() or os.getcwd()
+            )
+            return result.returncode == 0
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def _get_suggestion(self, rule_id: str) -> str:
+        """根据规则 ID 提供修复建议"""
+        suggestions = {
+            "security/detect-eval-with-expression": "避免使用动态 eval()，考虑使用更安全的替代方案",
+            "security/detect-non-literal-require": "避免动态 require()，可能导致代码注入",
+            "security/detect-object-injection": "验证对象属性访问的键值，防止原型污染",
+            "security/detect-unsafe-regex": "正则表达式可能导致 ReDoS 攻击，优化正则表达式",
+            "security/detect-non-literal-regexp": "避免使用动态构建的正则表达式",
+            "security/detect-non-literal-fs-filename": "验证文件路径输入，防止路径遍历攻击",
+            "security/detect-child-process": "验证子进程命令参数，防止命令注入",
+            "security/detect-new-buffer": "使用 Buffer.from() 替代 new Buffer()",
+            "security/detect-buffer-noassert": "Buffer 操作应启用边界检查",
+            "security/detect-pseudoRandomBytes": "使用 crypto.randomBytes() 替代伪随机数生成器",
+            "security/detect-possible-timing-attacks": "使用恒定时间比较函数比较敏感数据",
+            "security/detect-disable-mustache-escape": "不要禁用模板引擎的 HTML 转义",
+        }
+        return suggestions.get(rule_id, "请参考 ESLint Security 文档")
+
+
+def _get_project_root() -> str:
+    """获取项目根目录"""
+    cwd = os.getcwd()
+    # 向上查找包含 package.json 或 .venv 的目录
+    current = cwd
+    for _ in range(5):
+        if os.path.exists(os.path.join(current, 'package.json')):
+            return current
+        if os.path.exists(os.path.join(current, '.venv')):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return cwd

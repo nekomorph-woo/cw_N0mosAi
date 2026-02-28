@@ -1,0 +1,10 @@
+{
+  "name": "nomos-linter-deps",
+  "version": "1.0.0",
+  "description": "nOmOsAi Linter dependencies for JS/TS checking",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-plugin-security": "^3.0.0"
+  }
+}

@@ -109,6 +109,20 @@ else
     echo -e "${YELLOW}  ⚠ bandit 未安装 (可选)${NC}"
 fi
 
+# 检查 Node.js 依赖 (JS/TS 安全检查)
+if command -v npm &> /dev/null; then
+    echo -e "${GREEN}  ✓ npm 已安装${NC}"
+    # 检查 eslint-plugin-security
+    if [ -f "$PROJECT_ROOT/node_modules/eslint-plugin-security/package.json" ]; then
+        echo -e "${GREEN}  ✓ eslint-plugin-security${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ eslint-plugin-security 未安装${NC}"
+        echo -e "${YELLOW}    运行: npm install (在项目根目录)${NC}"
+    fi
+else
+    echo -e "${YELLOW}  ⚠ npm 未安装 (JS/TS 检查将跳过)${NC}"
+fi
+
 # 完成
 echo ""
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════════╗${NC}"
@@ -126,5 +140,9 @@ echo -e "${BLUE}║  或使用 Makefile:                                        
 echo -e "${BLUE}║    make activate                # 显示激活命令                   ${NC}"
 echo -e "${BLUE}║    make lint                    # 运行 Linter                    ${NC}"
 echo -e "${BLUE}║    make clean                   # 清理缓存                       ${NC}"
+echo -e "${BLUE}║                                                                   ${NC}"
+echo -e "${BLUE}╠══════════════════════════════════════════════════════════════════╣${NC}"
+echo -e "${BLUE}║  JS/TS 安全检查依赖 (可选):                                       ${NC}"
+echo -e "${BLUE}║    npm install                    # 安装 eslint + security 插件   ${NC}"
 echo -e "${BLUE}║                                                                   ${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════════╝${NC}"
