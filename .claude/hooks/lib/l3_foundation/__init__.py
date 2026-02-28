@@ -15,10 +15,6 @@ l3_foundation - Layer 3 基础能力层
 """
 
 from .dynamic_rule import DynamicRule, DynamicViolation, Severity
-
-# 向后兼容别名
-RuleViolation = DynamicViolation
-BaseRule = DynamicRule  # 保持与旧代码的兼容性
 from .ai_client import AIClient
 from .ast_utils import ASTUtils
 from .prompt_builder import PromptBuilder, PromptTemplate
@@ -28,9 +24,7 @@ from .rule_generator import RuleGenerator, RuleSyncer, RuleSpec, generate_rules_
 
 __all__ = [
     "DynamicRule",
-    "BaseRule",  # 别名，向后兼容
     "DynamicViolation",
-    "RuleViolation",  # 别名，向后兼容
     "Severity",
     "AIClient",
     "ASTUtils",

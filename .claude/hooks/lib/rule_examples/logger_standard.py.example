@@ -78,7 +78,7 @@ def _parse_ai_result(result):
         line_num = item.get('line', 0)
         reason = item.get('reason', '使用了 print() 进行输出')
 
-        violations.append(RuleViolation(
+        violations.append(DynamicViolation(
             rule=name,
             message=reason,
             line=line_num,
@@ -103,7 +103,7 @@ def _fallback_check(file_path, content):
             if line.strip().startswith('#'):
                 continue
 
-            violations.append(RuleViolation(
+            violations.append(DynamicViolation(
                 rule=name,
                 message="使用了 print() 进行输出",
                 line=line_num,

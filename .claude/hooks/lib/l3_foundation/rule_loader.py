@@ -318,9 +318,7 @@ class DynamicRuleLoader:
 
             # 注入 l3_foundation 基础能力
             "DynamicRule": dynamic_rule.DynamicRule,
-            "BaseRule": dynamic_rule.DynamicRule,  # 别名，向后兼容
             "DynamicViolation": dynamic_rule.DynamicViolation,
-            "RuleViolation": dynamic_rule.DynamicViolation,  # 别名，向后兼容
             "Severity": dynamic_rule.Severity,
             "AIClient": ai_client.AIClient,
             "ASTUtils": ast_utils.ASTUtils,

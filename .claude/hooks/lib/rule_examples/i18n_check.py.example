@@ -74,7 +74,7 @@ def _parse_ai_result(result):
         text = item.get('text', '')
         reason = item.get('reason', '硬编码字符串')
 
-        violations.append(RuleViolation(
+        violations.append(DynamicViolation(
             rule=name,
             message=f"{reason}: '{text[:30]}{'...' if len(text) > 30 else ''}'",
             line=line_num,
@@ -101,7 +101,7 @@ def _fallback_check(file_path, content):
             string_content = match.group(1)
             if i18n_func not in line:
                 if ' ' in string_content and len(string_content) > 15:
-                    violations.append(RuleViolation(
+                    violations.append(DynamicViolation(
                         rule=name,
                         message=f"可能存在硬编码的用户可见字符串: '{string_content[:30]}...'",
                         line=line_num,

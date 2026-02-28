@@ -44,7 +44,7 @@ def check(file_path, content):
         # 检查是否在禁止列表中
         for forbidden in forbidden_imports:
             if module.startswith(forbidden):
-                violations.append(RuleViolation(
+                violations.append(DynamicViolation(
                     rule=name,
                     message=f"禁止导入模块 '{module}'",
                     line=line,
@@ -58,7 +58,7 @@ def check(file_path, content):
             is_allowed = any(module.startswith(allowed) for allowed in allowed_imports)
             is_stdlib = not module.startswith('src') and not module.startswith('.')
             if not is_allowed and not is_stdlib:
-                violations.append(RuleViolation(
+                violations.append(DynamicViolation(
                     rule=name,
                     message=f"模块 '{module}' 不在允许列表中",
                     line=line,

@@ -39,7 +39,7 @@ def check(file_path, content):
         current = current_sigs.get(sig_key)
 
         if current is None:
-            violations.append(RuleViolation(
+            violations.append(DynamicViolation(
                 rule=name,
                 message=f"Protected Function '{func_name}' 被删除",
                 line=0,
@@ -50,7 +50,7 @@ def check(file_path, content):
         elif sig_key in historical_sigs:
             historical = historical_sigs[sig_key]
             if current["signature"] != historical["signature"]:
-                violations.append(RuleViolation(
+                violations.append(DynamicViolation(
                     rule=name,
                     message=f"Protected Function '{func_name}' 签名被修改",
                     line=current["line"],
@@ -65,7 +65,7 @@ def check(file_path, content):
         current = current_sigs.get(sig_key)
 
         if current is None:
-            violations.append(RuleViolation(
+            violations.append(DynamicViolation(
                 rule=name,
                 message=f"Protected Class '{class_name}' 被删除",
                 line=0,
@@ -76,7 +76,7 @@ def check(file_path, content):
         elif sig_key in historical_sigs:
             historical = historical_sigs[sig_key]
             if current["signature"] != historical["signature"]:
-                violations.append(RuleViolation(
+                violations.append(DynamicViolation(
                     rule=name,
                     message=f"Protected Class '{class_name}' 签名被修改",
                     line=current["line"],
