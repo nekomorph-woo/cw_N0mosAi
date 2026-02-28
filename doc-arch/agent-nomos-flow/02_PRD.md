@@ -309,8 +309,7 @@ Agent 容易生成"黑盒代码"(无日志、无监控),生产出问题难以追
 | Metric | Target | Measurement |
 |--------|--------|-------------|
 | Linter 检查延迟 | < 5 秒(Command Handler) | PreToolUse Hook 执行时间 |
-| Prompt Handler 延迟 | < 8 秒(Haiku 单轮) | 语义判断响应时间 |
-| Agent Handler 延迟 | < 60 秒(深度验证) | Subagent 完整执行时间 |
+| Prompt Handler 延迟 | < 30 秒(AI 语义判断 + 重试) | 语义判断响应时间 |
 | Task 文件夹切换 | < 1 秒 | SessionStart Hook 加载时间 |
 | 大型项目 Linter | < 10 秒(增量检查) | 只检查变更文件 |
 
@@ -720,9 +719,9 @@ ignore:
 
 ---
 
-### Q6: 跨文件依赖如何检查？是否需要专门的 Agent Handler？
+### Q6: 跨文件依赖如何检查？
 
-**结论: 需要，但分两阶段实现。**
+**结论: 分两阶段实现，基于 Subagent + AST 签名比对。**
 
 **阶段一（P1）: 基于 plan.md 的声明式检查**
 
@@ -740,27 +739,16 @@ ignore:
 
 Validator Subagent 使用 Grep/Read 工具验证这些声明是否被遵守。
 
-**阶段二（P2）: 基于 AST 的自动检测**
+**阶段二（P2）: 基于 AST 签名比对的自动检测**
 
-```yaml
-# .claude/rules/cross-file.yml
-cross_file_rules:
-  - name: "trace-id-propagation"
-    description: "trace_id 必须在调用链中传递"
-    check_type: "agent"  # 需要 Agent Handler 深度分析
-    entry_points: ["src/api/**/*.py"]
-    required_param: "trace_id"
-    propagation_depth: 3  # 检查 3 层调用深度
+InterfaceProtectionRule 使用 AST 解析 + 签名持久化：
+- 首次检查建立签名基线
+- 后续检查比对签名变化
+- 签名存储在 task 目录下 (`.signatures.json`)
 
-  - name: "interface-protection"
-    description: "Protected Interfaces 签名不可变更"
-    check_type: "command"  # 静态 diff 检查即可
-    interfaces_file: "plan.md#protected-interfaces"
-```
+**为什么这样设计**: 跨文件 AST 分析需要 Tree-sitter 支持（FR-101），阶段一用 Subagent 的只读工具链即可覆盖大部分场景，阶段二用 AST 签名比对确保接口稳定性。
 
-**为什么分阶段**: 跨文件 AST 分析需要 Tree-sitter 支持（FR-101），且 Agent Handler 有 60s 超时限制。阶段一用 Subagent 的只读工具链即可覆盖大部分场景，成本低、可靠性高。
-
-**优先级**: 阶段一 P1（随 Validator Subagent 实现），阶段二 P2（FR-204 已列入 Could Have）。
+**优先级**: 阶段一 P1（随 Validator Subagent 实现），阶段二 P1（InterfaceProtectionRule 已实现）。
 
 ---
 

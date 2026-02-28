@@ -1,0 +1,150 @@
+# 示例规则: 接口保护检查
+# 这是一个 Command Handler 示例，演示如何检查函数/类签名变更
+
+name = "interface_protection"
+layer = 3
+handler_type = "command"
+description = "检查 Protected Interface 签名是否被修改"
+
+# 签名文件名 (存储在 task 目录下)
+SIGNATURE_FILENAME = ".signatures.json"
+
+# 签名存储
+_signatures = {}
+_task_dir = None
+
+def check(file_path, content):
+    """检查 Protected Interface 签名变更"""
+    violations = []
+
+    protected_files = config.get('protected_files', [])
+    if file_path not in protected_files:
+        return violations
+
+    protected_functions = config.get('protected_functions', [])
+    protected_classes = config.get('protected_classes', [])
+
+    # 提取当前签名
+    current_sigs = _extract_signatures(content)
+
+    # 文件键 (用于持久化)
+    file_key = file_path.replace("/", "__")
+
+    # 获取历史签名
+    historical_sigs = _signatures.get(file_key, {})
+
+    # 检查函数签名
+    for func_name in protected_functions:
+        sig_key = f"func:{func_name}"
+        current = current_sigs.get(sig_key)
+
+        if current is None:
+            violations.append(DynamicViolation(
+                rule=name,
+                message=f"Protected Function '{func_name}' 被删除",
+                line=0,
+                column=0,
+                severity=Severity.ERROR,
+                suggestion="删除 Protected Interface 必须在 plan.md 中声明并获批准"
+            ))
+        elif sig_key in historical_sigs:
+            historical = historical_sigs[sig_key]
+            if current["signature"] != historical["signature"]:
+                violations.append(DynamicViolation(
+                    rule=name,
+                    message=f"Protected Function '{func_name}' 签名被修改",
+                    line=current["line"],
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion=f"修改前: {historical['signature']}\n修改后: {current['signature']}"
+                ))
+
+    # 检查类签名
+    for class_name in protected_classes:
+        sig_key = f"class:{class_name}"
+        current = current_sigs.get(sig_key)
+
+        if current is None:
+            violations.append(DynamicViolation(
+                rule=name,
+                message=f"Protected Class '{class_name}' 被删除",
+                line=0,
+                column=0,
+                severity=Severity.ERROR,
+                suggestion="删除 Protected Interface 必须在 plan.md 中声明并获批准"
+            ))
+        elif sig_key in historical_sigs:
+            historical = historical_sigs[sig_key]
+            if current["signature"] != historical["signature"]:
+                violations.append(DynamicViolation(
+                    rule=name,
+                    message=f"Protected Class '{class_name}' 签名被修改",
+                    line=current["line"],
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion=f"修改前: {historical['signature']}\n修改后: {current['signature']}"
+                ))
+
+    # 如果没有违规，更新签名基线
+    if not violations:
+        _signatures[file_key] = current_sigs
+        _save_signatures()
+
+    return violations
+
+def _extract_signatures(content):
+    """提取当前代码的函数/类签名"""
+    signatures = {}
+
+    tree = ASTUtils.parse(content, "dummy.py")
+    if not tree:
+        return signatures
+
+    # 提取函数签名
+    for func in ASTUtils.find_functions(tree):
+        sig = ASTUtils.get_function_signature(func)
+        signatures[f"func:{func.name}"] = {
+            "type": "function",
+            "name": func.name,
+            "signature": sig,
+            "line": func.lineno
+        }
+
+    # 提取类签名
+    for cls in ASTUtils.find_classes(tree):
+        methods = ASTUtils.get_class_methods(cls)
+        sig = f"class {cls.name}({', '.join(methods)})"
+        signatures[f"class:{cls.name}"] = {
+            "type": "class",
+            "name": cls.name,
+            "signature": sig,
+            "line": cls.lineno
+        }
+
+    return signatures
+
+def _save_signatures():
+    """持久化签名 (到 task 目录)"""
+    import json
+    import os
+
+    task_dir = _get_current_task_dir()
+    if task_dir:
+        sig_path = os.path.join(task_dir, SIGNATURE_FILENAME)
+        with open(sig_path, 'w', encoding='utf-8') as f:
+            json.dump(_signatures, f, indent=2, ensure_ascii=False)
+
+def _get_current_task_dir():
+    """获取当前 task 目录"""
+    global _task_dir
+    if _task_dir:
+        return _task_dir
+
+    # 使用 RuleContext 获取 task 目录
+    context = RuleContext()
+    _task_dir = context.task_dir
+    return _task_dir
+
+def should_check(file_path):
+    """判断是否需要检查此文件"""
+    return FileMatcher.match_patterns(file_path, config.get("target_patterns", ["*.py"]))

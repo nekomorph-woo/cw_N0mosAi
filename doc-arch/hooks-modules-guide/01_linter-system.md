@@ -60,9 +60,9 @@ N0mosAi Linter 系统的核心目标是实现 **"前置 Review"** -- 在代码�
 │           - 硬编码密钥检测                                  │
 │                                                             │
 │  Layer 3: 业务规则 (项目特定)                               │
-│           - i18n 强制使用                                   │
-│           - 模块隔离规则                                    │
-│           - plan.md 中定义的动态规则                        │
+│           - AI 自动生成规则                                 │
+│           - 从 plan.md 解析业务规则                         │
+│           - 安全沙箱执行                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,73 +70,42 @@ N0mosAi Linter 系统的核心目标是实现 **"前置 Review"** -- 在代码�
 
 ## 2. 系统架构设计
 
-### 2.1 架构文档中的设计要求
-
-来源: `/Volumes/Under_M2/a056cw/cw_N0mosAi/doc-arch/agent-nomos-flow/03_System_Architecture.md:820-853`
+### 2.1 整体架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      规则引擎层                              │
-│  (AgentLinterEngine + 三层规则体系)                         │
+│                      Linter 系统架构                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │              AgentLinterEngine (核心引擎)               ││
+│  │  ┌─────────────────────────────────────────────────────┐││
+│  │  │  Layer 1: rules/layer1_syntax.py                   │││
+│  │  │           RuffRule, ESLintRule                     │││
+│  │  └─────────────────────────────────────────────────────┘││
+│  │  ┌─────────────────────────────────────────────────────┐││
+│  │  │  Layer 2: rules/layer2_security.py                 │││
+│  │  │           BanditRule                               │││
+│  │  └─────────────────────────────────────────────────────┘││
+│  │  ┌─────────────────────────────────────────────────────┐││
+│  │  │  Layer 3: l3_foundation/ (动态规则基础能力层)      │││
+│  │  │  ├── DynamicRule + DynamicViolation               │││
+│  │  │  ├── DynamicRuleLoader (安全沙箱)                  │││
+│  │  │  ├── RuleGenerator (AI 生成)                       │││
+│  │  │  ├── AIClient, ASTUtils, PromptBuilder            │││
+│  │  │  └── task/rules/*.py (动态加载的规则脚本)          │││
+│  │  └─────────────────────────────────────────────────────┘││
+│  └─────────────────────────────────────────────────────────┘│
+│                            ↓                                │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                   multilang/ (多语言支持)               ││
+│  │  LanguageDetector, TreeSitterEngine, LanguageRuleSet   ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      状态持久化层                            │
-│  (Task 文件夹 + project-why.md + .claude/)                  │
-└─────────────────────────────────────────────────────────────┘
 ```
 
-**设计要点**:
-
-1. **三层规则体系**: 从语法到业务全覆盖
-2. **接口设计**:
-   ```python
-   class BaseRule:
-       def check(self, code, context) -> RuleResult:
-           pass
-
-   class AgentLinterEngine:
-       def run_all_rules(self, code, layer) -> List[RuleResult]:
-           pass
-   ```
-
-3. **触发时机**: PreToolUse Hook (工具调用前)
-
-### 2.2 审查流程中的位置
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      三层规则审查流程                                │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  Agent 调用 Write/Edit                                              │
-│       │                                                              │
-│       ▼                                                              │
-│  ┌─────────────────────────────────────────────────────────────────┐│
-│  │                    PreToolUse Hook                               ││
-│  │  ┌─────────────────────────────────────────────────────────────┐││
-│  │  │              AgentLinterEngine.run()                        │││
-│  │  │                                                              │││
-│  │  │   Layer 1: Ruff/ESLint ────────────┐                        │││
-│  │  │                                     │                        │││
-│  │  │   Layer 2: Bandit (安全) ───────────┼───▶ 汇总结果          │││
-│  │  │                                     │                        │││
-│  │  │   Layer 3: 业务规则 ────────────────┘                        │││
-│  │  └─────────────────────────────────────────────────────────────┘││
-│  └─────────────────────────────────────────────────────────────────┘│
-│       │                                                              │
-│       ├── PASS ──▶ 允许工具执行                                      │
-│       │                                                              │
-│       └── FAIL ──▶ 阻塞 + 错误喂回 Agent                            │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 3. 代码实现详解
-
-### 3.1 文件结构
+### 2.2 文件结构
 
 ```
 .claude/hooks/lib/
@@ -144,20 +113,43 @@ N0mosAi Linter 系统的核心目标是实现 **"前置 Review"** -- 在代码�
 ├── utils.py                   # 工具函数
 ├── rules/
 │   ├── __init__.py
-│   ├── base_rule.py           # 规则基类和数据结构
+│   ├── base_rule.py           # Layer 1/2 规则基类和数据结构
 │   ├── layer1_syntax.py       # 第一层语法规则
-│   ├── layer2_security.py     # 第二层安全规则
-│   └── layer3_business.py     # 第三层业务规则
-└── multilang/                 # 多语言支持模块
-    ├── __init__.py            # 模块导出
-    ├── language_detector.py   # 语言自动检测器
-    ├── tree_sitter_engine.py  # Tree-sitter AST 解析引擎
-    └── rulesets.py            # 分语言规则集
+│   └── layer2_security.py     # 第二层安全规则
+├── l3_foundation/             # Layer 3 基础能力层 (新增)
+│   ├── __init__.py            # 模块导出
+│   ├── dynamic_rule.py        # 动态规则基类 + FileMatcher
+│   ├── rule_loader.py         # 安全沙箱规则加载器
+│   ├── rule_generator.py      # AI 规则生成器
+│   ├── rule_context.py        # 规则上下文 (单例)
+│   ├── ai_client.py           # AI 调用客户端
+│   ├── ast_utils.py           # AST 解析工具 (多语言)
+│   └── prompt_builder.py      # Prompt 构建器 + 模板
+├── multilang/                 # 多语言支持模块
+│   ├── __init__.py            # 模块导出
+│   ├── language_detector.py   # 语言自动检测器
+│   ├── tree_sitter_engine.py  # Tree-sitter AST 解析引擎
+│   └── rulesets.py            # 分语言规则集
+├── rule_examples/             # 规则示例文件 (新增)
+│   ├── README.md              # 示例说明
+│   ├── module_isolation.py.example
+│   ├── logger_standard.py.example
+│   ├── i18n_check.py.example
+│   └── interface_protection.py.example
+└── performance/               # 性能优化模块
+    ├── cache.py               # 缓存
+    ├── incremental.py         # 增量检查
+    ├── parallel.py            # 并行执行
+    └── lazy_loader.py         # 延迟加载
 ```
 
-### 3.2 数据结构定义
+---
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/base_rule.py`
+## 3. Layer 1/2 规则系统
+
+### 3.1 数据结构定义
+
+**文件**: `.claude/hooks/lib/rules/base_rule.py`
 
 ```python
 class Severity(Enum):
@@ -188,135 +180,41 @@ class LinterResult:
     summary: str = ""
 ```
 
-**设计分析**:
+**设计要点**:
 
 - `Severity`: 三级严重程度，只有 ERROR 级别才会阻塞写入
 - `RuleViolation`: 完整的违规记录，包含修复建议
 - `LinterResult`: 最终结果，可序列化为 JSON
 
-### 3.3 规则基类
+### 3.2 规则基类
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/base_rule.py:59-93`
+**文件**: `.claude/hooks/lib/rules/base_rule.py:59-93`
 
 ```python
 class BaseRule:
-    """所有 Linter 规则的基类"""
+    """Layer 1/2 Linter 规则基类"""
 
     name: str = "base"
-    layer: int = 0  # 1, 2, 3
+    layer: int = 0  # 1 或 2
     description: str = ""
     supported_languages: List[str] = []  # 支持的语言列表
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """
-        检查代码是否违反规则
-
-        Args:
-            file_path: 文件路径
-            content: 文件内容
-
-        Returns:
-            违规列表
-        """
+        """检查代码是否违反规则"""
         raise NotImplementedError(f"{self.__class__.__name__}.check() must be implemented")
 
     def is_applicable(self, language: str) -> bool:
-        """
-        判断规则是否适用于指定语言
-        """
+        """判断规则是否适用于指定语言"""
         if not self.supported_languages:
             return True  # 如果未指定语言，则适用于所有语言
         return language in self.supported_languages
 ```
 
-**设计亮点**:
+### 3.3 Layer 1: 语法检查
 
-1. **类属性声明**: `name`, `layer`, `description` 作为类属性，便于反射和注册
-2. **语言过滤**: `is_applicable()` 支持多语言项目
-3. **强制实现**: `check()` 抛出 `NotImplementedError`，确保子类实现
+#### RuffRule (Python)
 
-### 3.4 核心 Linter 引擎
-
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/linter_engine.py`
-
-```python
-class AgentLinterEngine:
-    """核心 Linter 引擎"""
-
-    def __init__(self):
-        self.rules: List[BaseRule] = []
-
-    def register_rule(self, rule: BaseRule) -> None:
-        """注册规则"""
-        self.rules.append(rule)
-
-    def run(self, file_path: str, content: str,
-            layers: Optional[List[int]] = None) -> LinterResult:
-        """
-        运行 Linter 检查
-
-        Args:
-            file_path: 文件路径
-            content: 文件内容
-            layers: 指定运行的层级 (None=全部)
-
-        Returns:
-            LinterResult
-        """
-        # 1. 检测语言
-        language = self._detect_language(file_path)
-        if not language:
-            return LinterResult(passed=True, file_path=file_path,
-                               summary="非代码文件，跳过检查")
-
-        # 2. 过滤适用的规则
-        applicable_rules = self._filter_rules(language, layers)
-
-        # 3. 执行所有规则
-        all_violations = []
-        for rule in applicable_rules:
-            try:
-                violations = rule.check(file_path, content)
-                all_violations.extend(violations)
-            except Exception as e:
-                # 规则执行失败，记录为警告
-                all_violations.append(RuleViolation(...))
-
-        # 4. 判断是否通过（只有 ERROR 才算失败）
-        errors = [v for v in all_violations if v.severity == Severity.ERROR]
-        passed = len(errors) == 0
-
-        return LinterResult(passed=passed, ...)
-```
-
-**执行流程**:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AgentLinterEngine.run()                  │
-├─────────────────────────────────────────────────────────────┤
-│  Step 1: 检测语言                                           │
-│          └── utils.detect_language(file_path)               │
-│                                                             │
-│  Step 2: 过滤规则                                           │
-│          ├── 按层级过滤 (layers 参数)                       │
-│          └── 按语言过滤 (is_applicable)                     │
-│                                                             │
-│  Step 3: 执行规则                                           │
-│          ├── rule.check(file_path, content)                 │
-│          └── 异常捕获 → 转为 WARNING                        │
-│                                                             │
-│  Step 4: 汇总结果                                           │
-│          ├── passed = (errors == 0)                         │
-│          └── 生成摘要                                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 3.5 第一层规则: 语法检查
-
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/layer1_syntax.py`
-
-#### 3.5.1 RuffRule (Python)
+**文件**: `.claude/hooks/lib/rules/layer1_syntax.py`
 
 ```python
 class RuffRule(BaseRule):
@@ -328,48 +226,37 @@ class RuffRule(BaseRule):
     supported_languages = ["python"]
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        # 1. 检查 ruff 是否可用
+        # 1. 检测虚拟环境中的 ruff
         ruff_exe = _find_executable("ruff")
-        try:
-            subprocess.run([ruff_exe, "--version"], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return [RuleViolation(rule="ruff:not_found", ...)]
 
         # 2. 写入临时文件
         temp_file = create_temp_file(content, suffix=".py")
 
-        try:
-            # 3. 运行 ruff check
-            result = subprocess.run(
-                [ruff_exe, "check", "--output-format=json", temp_file],
-                capture_output=True, text=True
-            )
+        # 3. 运行 ruff check --output-format=json
+        result = subprocess.run(
+            [ruff_exe, "check", "--output-format=json", temp_file],
+            capture_output=True, text=True
+        )
 
-            # 4. 解析 JSON 输出
-            if result.stdout:
-                ruff_output = json.loads(result.stdout)
-                for item in ruff_output:
-                    violations.append(RuleViolation(
-                        rule=f"ruff:{item.get('code', 'unknown')}",
-                        message=item.get('message', ''),
-                        line=item.get('location', {}).get('row', 0),
-                        column=item.get('location', {}).get('column', 0),
-                        severity=Severity.ERROR if item.get('code', '').startswith('E') else Severity.WARNING,
-                        ...
-                    ))
-        finally:
-            os.remove(temp_file)
-
-        return violations
+        # 4. 解析 JSON 输出
+        for item in ruff_output:
+            violations.append(RuleViolation(
+                rule=f"ruff:{item.get('code', 'unknown')}",
+                message=item.get('message', ''),
+                line=item.get('location', {}).get('row', 0),
+                column=item.get('location', {}).get('column', 0),
+                severity=Severity.ERROR if code.startswith('E') else Severity.WARNING,
+                source="layer1"
+            ))
 ```
 
 **实现要点**:
 
-- 使用临时文件而非 stdin，确保行号准确
-- 错误码以 `E` 开头的为 ERROR，其他为 WARNING
 - 自动检测虚拟环境中的 ruff
+- 使用临时文件确保行号准确
+- 错误码以 `E` 开头的为 ERROR，其他为 WARNING
 
-#### 3.5.2 ESLintRule (JavaScript/TypeScript)
+#### ESLintRule (JavaScript/TypeScript)
 
 ```python
 class ESLintRule(BaseRule):
@@ -381,22 +268,18 @@ class ESLintRule(BaseRule):
     supported_languages = ["javascript", "typescript"]
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        # 检查 eslint 是否可用
+        # ESLint 未安装时优雅降级 (不报错)
         try:
-            subprocess.run(["eslint", "--version"], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return []  # ESLint 未安装，优雅降级
-
-        # ... 类似 RuffRule 的处理流程
+            subprocess.run(["eslint", "--version"], check=True)
+        except FileNotFoundError:
+            return []  # 返回空列表，不阻塞
 ```
 
-**差异点**: ESLint 未安装时不报错，优雅降级（返回空列表）
+### 3.4 Layer 2: 安全检查
 
-### 3.6 第二层规则: 安全检查
+#### BanditRule (Python 安全扫描)
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/layer2_security.py`
-
-#### 3.6.1 BanditRule (Python 安全扫描)
+**文件**: `.claude/hooks/lib/rules/layer2_security.py`
 
 ```python
 class BanditRule(BaseRule):
@@ -419,53 +302,379 @@ class BanditRule(BaseRule):
             [bandit_exe, "-f", "json", "-ll", temp_file],
             capture_output=True, text=True
         )
-
-        # 解析并映射严重程度
-        for issue in bandit_output.get('results', []):
-            severity_str = issue.get('issue_severity', 'LOW')
-            severity = self.SEVERITY_MAP.get(severity_str, Severity.INFO)
-            violations.append(RuleViolation(
-                rule=f"bandit:{issue.get('test_id', 'unknown')}",
-                message=issue.get('issue_text', ''),
-                ...
-            ))
 ```
 
-**内置修复建议** (行 132-200):
+**内置修复建议映射** (行 132-200):
+
+| 类别 | 示例规则 | 严重程度 | 修复建议 |
+|------|---------|---------|---------|
+| 密钥泄露 | B105/B106/B107 | ERROR | 使用环境变量或配置文件存储 |
+| 命令注入 | B601-B607 | ERROR | 避免 shell=True |
+| SQL 注入 | B608/B610/B611 | ERROR | 使用参数化查询 |
+| 不安全序列化 | B301/B302 | WARNING | 考虑使用 json |
+| 弱加密 | B303/B304/B305 | WARNING | 使用安全的加密算法 |
+
+---
+
+## 4. Layer 3: 动态规则系统
+
+### 4.1 架构概述
+
+Layer 3 采用 **AI 生成 + 安全沙箱** 的动态规则架构:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Layer 3 动态规则系统                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                  规则生成流程                           ││
+│  │  plan.md 业务规则 → RuleGenerator → AI 生成规则脚本    ││
+│  │                            ↓                            ││
+│  │                     task/rules/*.py                     ││
+│  └─────────────────────────────────────────────────────────┘│
+│                            ↓                                │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                  规则加载流程                           ││
+│  │  task/rules/*.py → DynamicRuleLoader → 安全沙箱执行    ││
+│  │                            ↓                            ││
+│  │                     DynamicRule 实例                    ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 l3_foundation 模块
+
+#### 4.2.1 模块导出
+
+**文件**: `.claude/hooks/lib/l3_foundation/__init__.py`
 
 ```python
-def _get_suggestion(self, test_id: str) -> str:
-    """根据测试 ID 提供修复建议"""
-    suggestions = {
-        "B105": "使用环境变量或配置文件存储密钥",
-        "B106": "使用环境变量或配置文件存储密码",
-        "B301": "避免使用 pickle，考虑使用 json",
-        "B311": "使用 secrets 模块替代 random",
-        "B506": "避免使用不安全的 YAML 加载",
-        "B601": "避免使用 shell=True",
-        "B608": "避免 SQL 注入",
-        ...
-    }
-    return suggestions.get(test_id, "请参考 Bandit 文档")
+from .dynamic_rule import DynamicRule, DynamicViolation, Severity, FileMatcher
+from .ai_client import AIClient
+from .ast_utils import ASTUtils
+from .prompt_builder import PromptBuilder, PromptTemplate
+from .rule_context import RuleContext
+from .rule_loader import DynamicRuleLoader, load_rules_from_task, SecurityError
+from .rule_generator import RuleGenerator, RuleSyncer, RuleSpec, generate_rules_from_plan
 ```
 
-**覆盖的安全问题**:
+#### 4.2.2 DynamicRule 基类
 
-| 类别 | 示例规则 | 严重程度 |
-|------|---------|---------|
-| 密钥泄露 | B105/B106/B107 | ERROR |
-| 不安全序列化 | B301/B302 | WARNING |
-| 弱加密 | B303/B304/B305 | WARNING |
-| XML 攻击 | B307/B313-B320 | WARNING |
-| 命令注入 | B601-B607 | ERROR |
-| SQL 注入 | B608/B610/B611 | ERROR |
-| 模板注入 | B701/B702/B703 | ERROR |
+**文件**: `.claude/hooks/lib/l3_foundation/dynamic_rule.py`
 
-### 3.7 第三层规则: 业务规则
+```python
+@dataclass
+class DynamicViolation:
+    """动态规则违规记录 - Layer 3 专用"""
+    rule: str              # 规则名称
+    message: str           # 违规描述
+    line: int              # 行号
+    column: int            # 列号
+    severity: Severity     # 严重程度
+    suggestion: str = ""   # 修复建议
+    source: str = "layer3" # 来源
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/rules/layer3_business.py`
 
-第三层规则支持三种 Handler 类型:
+class DynamicRule:
+    """动态规则基类 - Layer 3 业务规则必须继承此类
+
+    与 BaseRule (rules/base_rule.py) 的区别:
+    - BaseRule: 用于 Layer 1/2 静态规则，有 supported_languages, is_applicable()
+    - DynamicRule: 用于 Layer 3 动态规则，有 handler_type, config, should_check()
+    """
+
+    name: str = ""              # 规则名称
+    layer: int = 3              # 规则层级 (固定为 3)
+    description: str = ""       # 规则描述
+    handler_type: str = "command"  # handler 类型: command / prompt
+
+    def __init__(self, config: Dict[str, Any] = None):
+        self.config = config or {}
+
+    def check(self, file_path: str, content: str) -> List[DynamicViolation]:
+        """检查代码是否违规"""
+        raise NotImplementedError("子类必须实现 check() 方法")
+
+    def should_check(self, file_path: str) -> bool:
+        """判断是否需要检查此文件"""
+        return True  # 默认检查所有文件
+```
+
+#### 4.2.3 FileMatcher 工具
+
+**文件**: `.claude/hooks/lib/l3_foundation/dynamic_rule.py:98-194`
+
+```python
+class FileMatcher:
+    """文件匹配工具 - 用于 should_check 实现"""
+
+    @staticmethod
+    def match_patterns(file_path: str, patterns: List[str]) -> bool:
+        """
+        检查文件路径是否匹配任意模式
+
+        支持的模式格式:
+        - `*.py`: 匹配所有 .py 文件
+        - `**/*.py`: 递归匹配所有 .py 文件
+        - `src/api/**/*.py`: 匹配 src/api/ 下的所有 .py 文件
+        - `*.ts,*.tsx`: 支持多个模式 (逗号分隔)
+        """
+        for pattern in patterns:
+            # 处理 ** 模式
+            if "**" in pattern:
+                # 转换为 fnmatch 兼容格式
+                ...
+
+            # fnmatch 匹配
+            if fnmatch.fnmatch(normalized_path, normalized_pattern):
+                return True
+
+        return False
+
+    @staticmethod
+    def match_extensions(file_path: str, extensions: List[str]) -> bool:
+        """检查文件扩展名是否匹配"""
+        return any(file_path.endswith(ext) for ext in extensions)
+```
+
+### 4.3 规则加载器 (安全沙箱)
+
+**文件**: `.claude/hooks/lib/l3_foundation/rule_loader.py`
+
+#### 4.3.1 三重安全检查
+
+```python
+class DynamicRuleLoader:
+    """动态规则加载器 - 从 task 目录加载规则脚本"""
+
+    def _load_script_securely(self, script_path: Path) -> List[DynamicRule]:
+        """安全加载单个脚本"""
+
+        # 1. 读取脚本内容
+        source = script_path.read_text(encoding='utf-8')
+
+        # 2. 静态安全扫描 (正则匹配危险模式)
+        threats = self._static_security_scan(source)
+        if threats:
+            raise SecurityError(f"静态扫描检测到威胁: {', '.join(threats)}")
+
+        # 3. AST 安全检查
+        ast_threats = self._ast_security_check(source)
+        if ast_threats:
+            raise SecurityError(f"AST 检查检测到威胁: {', '.join(ast_threats)}")
+
+        # 4. 创建沙箱环境
+        sandbox_globals = self._create_sandbox_globals()
+
+        # 5. 编译代码
+        code = compile(source, str(script_path), "exec")
+
+        # 6. 沙箱执行 (带超时)
+        self._exec_with_timeout(code, sandbox_globals, timeout=5)
+
+        # 7. 提取规则实例
+        ...
+```
+
+#### 4.3.2 静态安全扫描
+
+```python
+def _static_security_scan(self, source: str) -> List[str]:
+    """静态安全扫描 - 正则匹配危险模式"""
+    dangerous_patterns = [
+        (r"import\s+os\b", "禁止导入 os 模块"),
+        (r"import\s+subprocess", "禁止导入 subprocess 模块"),
+        (r"import\s+sys\b", "禁止导入 sys 模块"),
+        (r"\beval\s*\(", "禁止使用 eval()"),
+        (r"\bexec\s*\(", "禁止使用 exec()"),
+        (r"\bopen\s*\(", "禁止使用 open()"),
+        (r"__builtins__", "禁止访问 __builtins__"),
+    ]
+    ...
+```
+
+#### 4.3.3 沙箱执行环境
+
+```python
+def _create_sandbox_globals(self) -> Dict[str, Any]:
+    """创建沙箱执行环境"""
+    # 1. 创建受限的 builtins
+    safe_builtins = {
+        "__build_class__": __builtins__["__build_class__"],
+        "abs": abs, "all": all, "any": any, "bool": bool,
+        "dict": dict, "list": list, "set": set, "str": str,
+        "Exception": Exception, "ValueError": ValueError,
+        # 禁止的函数 (设为 None)
+        "eval": None, "exec": None, "open": None,
+    }
+
+    # 2. 注入白名单模块
+    return {
+        "__builtins__": safe_builtins,
+        # 注入 l3_foundation 基础能力
+        "DynamicRule": DynamicRule,
+        "DynamicViolation": DynamicViolation,
+        "Severity": Severity,
+        "FileMatcher": FileMatcher,
+        "AIClient": AIClient,
+        "ASTUtils": ASTUtils,
+        "re": re, "ast": ast,
+    }
+```
+
+#### 4.3.4 规则风格支持
+
+```python
+def _load_script_securely(self, script_path: Path) -> List[DynamicRule]:
+    ...
+    # 方式 1: 类继承风格 (继承 DynamicRule)
+    if issubclass(obj, DynamicRule) and obj is not DynamicRule:
+        rule_instance = obj()
+        rules.append(rule_instance)
+
+    # 方式 2: 函数式风格 (有 check 和 should_check 函数)
+    if name == "check" and callable(obj):
+        # 检查是否有函数式规则的标识 (name, layer, handler_type)
+        if sandbox_globals.get("name"):
+            class FunctionalRuleWrapper(DynamicRule):
+                def check(self, file_path, content):
+                    return self._check_fn(file_path, content)
+                def should_check(self, file_path):
+                    return self._should_check_fn(file_path)
+            rules.append(FunctionalRuleWrapper())
+```
+
+### 4.4 规则生成器
+
+**文件**: `.claude/hooks/lib/l3_foundation/rule_generator.py`
+
+#### 4.4.1 从 plan.md 解析业务规则
+
+```python
+class RuleGenerator:
+    """规则生成器 - 从 plan.md 生成规则脚本"""
+
+    def parse_business_rules(self, plan_content: str = None) -> List[RuleSpec]:
+        """
+        从 plan.md 解析业务规则
+
+        支持的格式:
+        #### 规则 1: 规则名称
+        - **描述**: 规则描述
+        - **Handler**: command / prompt
+        - **严重程度**: error / warning / info
+        - **文件匹配**: src/api/**/*.py
+        - **适用范围**: API 层代码
+        - **代码特征**: 带路由装饰器的函数
+        - **详细说明**: ...
+        """
+        # 查找 "## 业务规则" 章节
+        # 解析规则属性
+        ...
+```
+
+#### 4.4.2 AI 生成规则脚本
+
+```python
+def generate_rule_script(self, rule_spec: RuleSpec) -> Optional[str]:
+    """生成规则脚本"""
+    # 选择模板
+    template = (PROMPT_HANDLER_TEMPLATE if rule_spec.handler_type == "prompt"
+                else COMMAND_HANDLER_TEMPLATE)
+
+    # 填充模板
+    prompt = template.render(
+        task_id=self.context.task_id,
+        rule_description=self._format_rule_description(rule_spec)
+    )
+
+    # 调用 AI 生成
+    result = self.ai_client.call(prompt, "", max_tokens=4096)
+
+    # 提取 Python 代码块
+    code_match = re.search(r'```python\s*([\s\S]*?)\s*```', result)
+    return code_match.group(1) if code_match else None
+```
+
+#### 4.4.3 规则同步器
+
+```python
+class RuleSyncer:
+    """规则同步器 - plan.md 变更时同步规则脚本"""
+
+    def sync_on_plan_change(self, old_plan: str, new_plan: str) -> Dict[str, Any]:
+        """plan.md 变更时同步规则脚本"""
+        old_rules = self.generator.parse_business_rules(old_plan)
+        new_rules = self.generator.parse_business_rules(new_plan)
+
+        diff = self._compute_diff(old_rules, new_rules)
+
+        # 处理新增/修改/删除规则
+        # 如果用户已修改规则脚本，跳过自动更新
+        ...
+```
+
+### 4.5 AI 客户端
+
+**文件**: `.claude/hooks/lib/l3_foundation/ai_client.py`
+
+#### 4.5.1 零配置设计
+
+```python
+class AIClient:
+    """
+    轻量级 AI 客户端 - 零配置设计
+
+    环境变量 (优先级递减):
+      API Key: ANTHROPIC_API_KEY > ANTHROPIC_AUTH_TOKEN > NOMOS_API_KEY
+      Base URL: ANTHROPIC_BASE_URL > NOMOS_API_BASE_URL
+      Model: ANTHROPIC_DEFAULT_HAIKU_MODEL > DEFAULT_HAIKU_MODEL
+      Timeout: NOMOS_AI_TIMEOUT (默认 30 秒)
+    """
+
+    DEFAULT_MODEL = "claude-3-5-haiku-20241022"
+    DEFAULT_BASE_URL = "https://api.anthropic.com"
+    MAX_RETRIES = 3
+
+    def __init__(self):
+        # 读取环境变量配置
+        self.api_key = (
+            os.environ.get("ANTHROPIC_API_KEY") or
+            os.environ.get("NOMOS_API_KEY") or
+            ...
+        )
+```
+
+#### 4.5.2 调用机制
+
+```python
+def call(self, prompt: str, content: str, max_tokens: int = 512) -> Optional[Dict]:
+    """调用 AI 进行判断 (带重试机制)"""
+    # 1. 检查缓存
+    cache_key = hashlib.md5(f"{prompt}:{content}".encode()).hexdigest()
+    if cache_key in self._cache:
+        return self._cache[cache_key]
+
+    # 2. 重试机制 (指数退避)
+    for attempt in range(self.MAX_RETRIES):
+        try:
+            result = self._make_request(url, request_body)
+            # 3. 解析 JSON (支持 markdown 代码块)
+            parsed = self._parse_response(result)
+            self._cache[cache_key] = parsed
+            return parsed
+        except Exception as e:
+            time.sleep(1 * (attempt + 1))
+            continue
+
+    return None
+```
+
+### 4.6 Handler 类型
+
+Layer 3 支持两种 Handler 类型:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -473,540 +682,270 @@ def _get_suggestion(self, test_id: str) -> str:
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Command Handler (静态检查)                                 │
-│  ├── 使用正则表达式、AST 解析                               │
+│  ├── 使用 ASTUtils 进行静态分析                             │
 │  ├── 速度快，确定性高                                       │
-│  └── 示例: ModuleIsolationRule                             │
+│  └── 示例: module_isolation, interface_protection          │
 │                                                             │
 │  Prompt Handler (语义判断)                                  │
-│  ├── 调用 Haiku 模型进行语义分析                            │
+│  ├── 使用 AIClient 进行 AI 语义分析                         │
 │  ├── 能处理复杂的语义场景                                   │
-│  └── 示例: I18nRule, LoggerRule                            │
-│                                                             │
-│  Agent Handler (深度验证)                                   │
-│  ├── spawn 子 Agent 进行深度验证                            │
-│  ├── 最强大但开销最大                                       │
-│  └── 示例: InterfaceProtectionRule                         │
+│  ├── 正则降级: AI 不可用时使用正则                          │
+│  └── 示例: logger_standard, i18n_check                     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 3.7.1 ModuleIsolationRule (Command Handler)
+#### Prompt 模板
+
+**文件**: `.claude/hooks/lib/l3_foundation/prompt_builder.py`
 
 ```python
-class ModuleIsolationRule(Layer3Rule):
-    """模块隔离规则 - Command Handler"""
+COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的业务规则需求，生成 Layer 3 规则脚本。
 
-    name = "module_isolation"
-    handler_type = "command"
-    description = "检查模块间 import 是否符合隔离规则"
+## 生成要求
 
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """
-        config:
-          allowed_imports: ["src.core", "src.utils"]
-          forbidden_imports: ["src.internal"]
-        """
-        # 提取所有 import 语句
-        import_pattern = r'^(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))'
-        for line_num, line in enumerate(content.split('\n'), 1):
-            match = re.match(import_pattern, line.strip())
-            if match:
-                module = match.group(1) or match.group(2)
+1. **Handler 类型**: Command Handler (使用 AST 静态分析)
+2. **脚本模板**: 必须继承 DynamicRule
+3. **基础能力**: 必须使用 l3_foundation 提供的能力
+   - DynamicRule, DynamicViolation, Severity
+   - ASTUtils, FileMatcher, RuleContext
 
-                # 检查是否在禁止列表中
-                for forbidden in forbidden_imports:
-                    if module.startswith(forbidden):
-                        violations.append(RuleViolation(
-                            severity=Severity.MAJOR,
-                            message=f"禁止导入模块 '{module}'",
-                            ...
-                        ))
+4. **规则范围理解**:
+   - **适用范围**: 用户描述的代码范围 (如 "API 层代码")
+   - **文件匹配**: 具体的 glob 模式 (如 `src/api/**/*.py`)
+   - **代码特征**: 进一步限定检查目标的特征
+
+5. **should_check 实现**: 使用 FileMatcher.match_patterns() 过滤文件
+6. **check 实现**: 使用 ASTUtils.parse() 解析代码，实现检查逻辑
+"""
+
+PROMPT_HANDLER_TEMPLATE = """...
+1. **Handler 类型**: Prompt Handler (使用 AI 语义分析)
+...
+5. **检查逻辑**:
+   - 实现 _should_ai_check() 快速预检
+   - 实现 _build_prompt() 构建 AI prompt
+   - 实现 _parse_ai_result() 解析 AI 返回
+   - 实现 _fallback_check() 正则降级
+"""
 ```
 
-#### 3.7.2 I18nRule (Prompt Handler)
-
-```python
-class I18nRule(Layer3Rule):
-    """国际化规则 - Prompt Handler"""
-
-    name = "i18n_required"
-    handler_type = "prompt"
-    description = "检查 UI 代码是否使用 i18n"
-
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """
-        config:
-          target_dirs: ["src/ui/", "src/views/"]
-          exclude_patterns: ["test_*", "*_test.py"]
-          i18n_function: "_t"
-        """
-        # 检查文件是否在目标目录中
-        if not any(file_path.startswith(d) for d in target_dirs):
-            return violations
-
-        # 简化实现: 检测字符串字面量
-        # (实际应该调用 Haiku)
-        string_pattern = r'["\']([^"\']{10,})["\']'
-        for line_num, line in enumerate(content.split('\n'), 1):
-            if i18n_function not in line:
-                # 简单启发式: 包含空格的长字符串可能是用户可见文本
-                if ' ' in string_content and len(string_content) > 15:
-                    violations.append(RuleViolation(
-                        severity=Severity.MINOR,
-                        message=f"可能存在硬编码的用户可见字符串",
-                        ...
-                    ))
-```
-
-**注意**: 当前实现使用正则作为 fallback，实际设计中应该调用 Haiku 模型
-
-#### 3.7.3 InterfaceProtectionRule (Agent Handler)
-
-```python
-class InterfaceProtectionRule(Layer3Rule):
-    """接口保护规则 - Agent Handler"""
-
-    name = "interface_protection"
-    handler_type = "agent"
-    description = "检查 Protected Interface 签名是否被修改"
-
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        """
-        config:
-          protected_files: ["src/core/interfaces.py"]
-          protected_functions: ["authenticate", "authorize"]
-          protected_classes: ["UserService"]
-        """
-        # 简化实现: 使用 AST 检测函数签名
-        tree = ast.parse(content)
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if node.name in protected_functions:
-                    violations.append(RuleViolation(
-                        severity=Severity.CRITICAL,
-                        message=f"Protected Function '{node.name}' 被修改",
-                        suggestion="修改 Protected Interface 前必须在 plan.md 中声明"
-                    ))
-```
-
-#### 3.7.4 DynamicRuleLoader (动态规则加载)
-
-```python
-class DynamicRuleLoader:
-    """从 plan.md 动态加载第三层规则"""
-
-    RULE_REGISTRY = {
-        "module_isolation": ModuleIsolationRule,
-        "i18n_required": I18nRule,
-        "logger_standard": LoggerRule,
-        "interface_protection": InterfaceProtectionRule,
-    }
-
-    def load_from_plan(self, plan_path: str) -> List[Layer3Rule]:
-        """从 plan.md 的 YAML Frontmatter 读取 custom_rules"""
-        # 提取 YAML Frontmatter
-        parts = content.split('---', 2)
-        frontmatter = yaml.safe_load(parts[1])
-
-        # 实例化规则
-        rules = []
-        for rule_config in frontmatter['custom_rules']:
-            rule_name = rule_config.get('rule')
-            config = rule_config.get('config', {})
-            if rule_name in self.RULE_REGISTRY:
-                rules.append(self.RULE_REGISTRY[rule_name](config))
-
-        return rules
-```
-
-**plan.md 中的配置示例**:
-
-```markdown
 ---
-custom_rules:
-  - rule: module_isolation
-    config:
-      allowed_imports: ["src.core", "src.utils"]
-      forbidden_imports: ["src.internal"]
-  - rule: i18n_required
-    config:
-      target_dirs: ["src/ui/"]
-      i18n_function: "_t"
----
-```
 
-### 3.8 工具函数
+## 5. 规则示例
 
-**文件**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/utils.py`
+### 5.1 示例文件目录
 
-```python
-def create_temp_file(content: str, suffix: str = ".tmp") -> str:
-    """创建临时文件并写入内容"""
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    with os.fdopen(fd, 'w') as f:
-        f.write(content)
-    return path
+**位置**: `.claude/hooks/lib/rule_examples/`
 
+| 示例文件 | Handler 类型 | 说明 |
+|---------|-------------|------|
+| `module_isolation.py.example` | Command | 模块隔离检查 - 演示 AST 检查导入 |
+| `logger_standard.py.example` | Prompt | Logger 规范 - 演示 AI 语义判断 + 正则降级 |
+| `i18n_check.py.example` | Prompt | 国际化检查 - 演示 UI 文本检查 |
+| `interface_protection.py.example` | Command | 接口保护 - 演示签名变更检查 |
 
-def detect_language(file_path: str) -> Optional[str]:
-    """根据文件扩展名检测语言"""
-    ext = Path(file_path).suffix.lower()
-    language_map = {
-        ".py": "python",
-        ".js": "javascript",
-        ".jsx": "javascript",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".go": "go",
-        ".rs": "rust",
-        ...
-    }
-    return language_map.get(ext)
-```
+### 5.2 Command Handler 示例
 
-### 3.9 多语言支持模块 (multilang)
-
-**目录**: `/Volumes/Under_M2/a056cw/cw_N0mosAi/.claude/hooks/lib/multilang/`
-
-multilang 模块是 Linter 系统的多语言基础设施层，提供语言检测、AST 解析和分语言规则集管理。
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   multilang 模块架构                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────────┐    ┌─────────────────────┐        │
-│  │  LanguageDetector   │───▶│  TreeSitterEngine   │        │
-│  │   语言自动检测       │    │   AST 解析引擎       │        │
-│  └─────────────────────┘    └─────────────────────┘        │
-│           │                          │                      │
-│           ▼                          ▼                      │
-│  ┌─────────────────────────────────────────────────┐       │
-│  │                LanguageRuleSet                   │       │
-│  │  ┌───────────┬───────────┬───────────┬───────┐  │       │
-│  │  │ Python    │ JS/TS     │ Go        │ Java  │  │       │
-│  │  │ RuleSet   │ RuleSet   │ RuleSet   │RuleSet│  │       │
-│  │  │ (ruff)    │ (eslint)  │(golangci) │(check)│  │       │
-│  │  └───────────┴───────────┴───────────┴───────┘  │       │
-│  └─────────────────────────────────────────────────┘       │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### 3.9.1 LanguageDetector (语言检测器)
-
-**文件**: `multilang/language_detector.py`
+**文件**: `rule_examples/module_isolation.py.example`
 
 ```python
-class Language(Enum):
-    """支持的编程语言"""
-    PYTHON = "python"
-    JAVASCRIPT = "javascript"
-    TYPESCRIPT = "typescript"
-    GO = "go"
-    JAVA = "java"
-    UNKNOWN = "unknown"
+# 规则元信息
+name = "module_isolation"
+layer = 3
+handler_type = "command"
+description = "检查模块间 import 是否符合隔离规则"
 
-
-class LanguageDetector:
-    """基于文件扩展名的语言自动检测器"""
-
-    def __init__(self, config_path: Optional[Path] = None):
-        """初始化语言检测器
-
-        Args:
-            config_path: 可选的配置文件路径 (.claude/rules/languages.yml)
-        """
-        self._ext_map = dict(DEFAULT_EXTENSION_MAP)
-        if config_path and config_path.exists():
-            self._load_config(config_path)
-
-    def detect(self, file_path: Path) -> Language:
-        """检测文件的编程语言"""
-        return self._ext_map.get(file_path.suffix, Language.UNKNOWN)
-```
-
-**扩展名映射**:
-
-| 扩展名 | 语言 |
-|--------|------|
-| `.py`, `.pyi` | Python |
-| `.js`, `.jsx` | JavaScript |
-| `.ts`, `.tsx` | TypeScript |
-| `.go` | Go |
-| `.java` | Java |
-
-#### 3.9.2 TreeSitterEngine (AST 解析引擎)
-
-**文件**: `multilang/tree_sitter_engine.py`
-
-提供统一的 AST 抽象层，支持跨语言的函数签名提取、导入分析和调用链追踪。
-
-```python
-@dataclass
-class UnifiedAST:
-    """统一 AST 抽象 — 跨语言通用结构"""
-    language: Language
-    functions: List[FunctionSignature] = field(default_factory=list)
-    imports: List[ImportInfo] = field(default_factory=list)
-    call_sites: List[CallSite] = field(default_factory=list)
-
-
-class TreeSitterEngine:
-    """Tree-sitter 多语言解析引擎
-
-    注意: 此实现需要 tree-sitter 和对应语言的绑定
-    如果未安装，将优雅降级到基础 AST 解析
-    """
-
-    def parse(self, source: bytes, language: Language) -> UnifiedAST:
-        """解析源代码，返回统一 AST"""
-        if not self._tree_sitter_available:
-            return self._fallback_parse(source, language)
-        # Tree-sitter 解析逻辑...
-
-    def _fallback_parse(self, source: bytes, language: Language) -> UnifiedAST:
-        """降级解析 - 使用 Python 内置 ast 模块"""
-        if language == Language.PYTHON:
-            return self._parse_python_fallback(source)
-        return UnifiedAST(language=language)
-```
-
-**核心数据结构**:
-
-```python
-@dataclass
-class FunctionSignature:
-    """函数签名"""
-    name: str
-    params: List[str]
-    return_type: Optional[str]
-    line_number: int
-
-
-@dataclass
-class ImportInfo:
-    """导入信息"""
-    module: str
-    names: List[str]
-    is_relative: bool
-    line_number: int
-
-
-@dataclass
-class CallSite:
-    """调用点"""
-    caller: str
-    callee: str
-    line_number: int
-```
-
-#### 3.9.3 LanguageRuleSet (分语言规则集)
-
-**文件**: `multilang/rulesets.py`
-
-为不同编程语言提供专门的 Linter 规则集。
-
-```python
-class PythonRuleSet(LanguageRuleSet):
-    """Python 规则集: ruff + bandit"""
-
-    def run(self, file_path: Path) -> List[LintResult]:
-        """运行 Python Linter"""
-        result = subprocess.run(
-            ['ruff', 'check', '--output-format=json', str(file_path)],
-            capture_output=True, text=True, timeout=30
-        )
-        # 解析 JSON 输出...
-
-
-class JSTypeScriptRuleSet(LanguageRuleSet):
-    """JS/TS 规则集: eslint + semgrep"""
-
-    def run(self, file_path: Path) -> List[LintResult]:
-        """运行 JS/TS Linter"""
-        result = subprocess.run(
-            ['eslint', '--format=json', str(file_path)],
-            capture_output=True, text=True, timeout=30
-        )
-        # 解析 JSON 输出...
-```
-
-**规则集注册表**:
-
-```python
-RULESET_REGISTRY = {
-    Language.PYTHON: PythonRuleSet,
-    Language.JAVASCRIPT: JSTypeScriptRuleSet,
-    Language.TYPESCRIPT: lambda: JSTypeScriptRuleSet(Language.TYPESCRIPT),
-    Language.GO: GoRuleSet,
-    Language.JAVA: JavaRuleSet,
+# 规则配置
+config = {
+    'allowed_imports': ["src.core", "src.utils"],
+    'forbidden_imports': ["src.internal"],
+    'target_patterns': ["*.py"]
 }
+
+def check(file_path, content):
+    """检查代码是否违反模块隔离规则"""
+    violations = []
+
+    # 使用 ASTUtils 提取导入语句
+    tree = ASTUtils.parse(content, file_path)
+    imports = ASTUtils.find_imports(tree)
+
+    for imp in imports:
+        module = imp.get('module', '')
+
+        # 检查是否在禁止列表中
+        for forbidden in config.get('forbidden_imports', []):
+            if module.startswith(forbidden):
+                violations.append(DynamicViolation(
+                    rule=name,
+                    message=f"禁止导入模块 '{module}'",
+                    line=imp.get('line', 0),
+                    column=0,
+                    severity=Severity.ERROR,
+                    suggestion=f"请使用允许的模块: {', '.join(config.get('allowed_imports', []))}"
+                ))
+
+    return violations
+
+def should_check(file_path):
+    """判断是否需要检查此文件"""
+    return FileMatcher.match_patterns(file_path, config.get('target_patterns', ["*.py"]))
 ```
 
-#### 3.9.4 multilang 与 Linter 系统的关系
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Linter 系统调用关系                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  AgentLinterEngine.run()                                        │
-│       │                                                          │
-│       ├─▶ utils.detect_language()      ← 基础检测               │
-│       │         │                                               │
-│       │         └─▶ 或使用 multilang.LanguageDetector           │
-│       │                    (更完整的语言检测)                    │
-│       │                                                          │
-│       ├─▶ Layer1 语法规则                                       │
-│       │         │                                               │
-│       │         ├─▶ RuffRule (Python)                          │
-│       │         │         │                                     │
-│       │         │         └─▶ 可调用 PythonRuleSet              │
-│       │         │                                               │
-│       │         └─▶ ESLintRule (JS/TS)                         │
-│       │                   │                                     │
-│       │                   └─▶ 可调用 JSTypeScriptRuleSet        │
-│       │                                                          │
-│       └─▶ Layer3 业务规则                                       │
-│                 │                                               │
-│                 └─▶ ModuleIsolationRule 等                      │
-│                           │                                     │
-│                           └─▶ 可使用 TreeSitterEngine           │
-│                                      提取 imports 进行检查       │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**关键说明**:
-
-| 问题 | 答案 |
-|------|------|
-| **multilang 是否用于语法检查?** | ✅ 是的，但作为独立模块存在 |
-| **与 layer1_syntax.py 的关系?** | 平行关系，可互相调用 |
-| **当前集成状态** | 模块已实现，但 Linter Engine 未直接引用 |
-| **设计意图** | 为未来多语言扩展提供基础设施 |
-
-#### 3.9.5 使用示例
+### 5.3 Prompt Handler 模板
 
 ```python
-from lib.multilang import LanguageDetector, TreeSitterEngine, get_ruleset
+# 规则元信息
+name = "rule_name"
+layer = 3
+handler_type = "prompt"
+description = "规则描述"
 
-# 语言检测
-detector = LanguageDetector()
-language = detector.detect(Path("src/auth/service.py"))
-# → Language.PYTHON
+config = {
+    "scope": "前端组件",
+    "target_patterns": ["src/**/*.tsx"],
+    "code_features": "包含用户可见文本的组件",
+}
 
-# AST 解析
-engine = TreeSitterEngine()
-with open("src/auth/service.py", "rb") as f:
-    ast = engine.parse(f.read(), Language.PYTHON)
+ai_client = AIClient()
 
-# 提取函数签名
-functions = engine.extract_functions(ast)
-for func in functions:
-    print(f"{func.name}({', '.join(func.params)}) -> {func.return_type}")
+def check(file_path, content):
+    """智能检查: AI 优先, 正则降级"""
+    violations = []
 
-# 使用分语言规则集
-ruleset = get_ruleset(Language.PYTHON)
-results = ruleset.run(Path("src/auth/service.py"))
-for r in results:
-    print(f"[{r.severity}] {r.rule_id}: {r.message} (line {r.line_number})")
+    # 快速预检
+    if not _should_check(file_path, content):
+        return violations
+
+    # AI 判断
+    if ai_client.available:
+        prompt = _build_prompt()
+        result = ai_client.call(prompt, content)
+        if result:
+            violations = _parse_ai_result(result)
+
+    # 降级到正则
+    if not violations:
+        violations = _fallback_check(file_path, content)
+
+    return violations
+
+def _should_check(file_path, content):
+    """快速预检"""
+    return True
+
+def _build_prompt():
+    """构建 AI prompt"""
+    return """你是代码审查专家..."""
+
+def _parse_ai_result(result):
+    """解析 AI 返回结果"""
+    return []
+
+def _fallback_check(file_path, content):
+    """正则降级检查"""
+    return []
+
+def should_check(file_path):
+    return FileMatcher.match_patterns(file_path, config.get("target_patterns", ["*"]))
 ```
 
 ---
 
-## 4. 设计 vs 实现对比
+## 6. 核心 Linter 引擎
 
-### 4.1 完成度分析
+### 6.1 AgentLinterEngine
+
+**文件**: `.claude/hooks/lib/linter_engine.py`
+
+```python
+class AgentLinterEngine:
+    """核心 Linter 引擎"""
+
+    def __init__(self):
+        self.rules: List[BaseRule] = []
+
+    def register_rule(self, rule: BaseRule) -> None:
+        """注册规则"""
+        self.rules.append(rule)
+
+    def run(self, file_path: str, content: str,
+            layers: Optional[List[int]] = None) -> LinterResult:
+        """运行 Linter 检查"""
+        # 1. 检测语言
+        language = self._detect_language(file_path)
+        if not language:
+            return LinterResult(passed=True, summary="非代码文件，跳过检查")
+
+        # 2. 过滤适用的规则
+        applicable_rules = self._filter_rules(language, layers)
+
+        # 3. 执行所有规则
+        all_violations = []
+        for rule in applicable_rules:
+            try:
+                violations = rule.check(file_path, content)
+                all_violations.extend(violations)
+            except Exception as e:
+                # 规则执行失败，记录为警告
+                all_violations.append(RuleViolation(...))
+
+        # 4. 判断是否通过（只有 ERROR 才算失败）
+        errors = [v for v in all_violations if v.severity == Severity.ERROR]
+        passed = len(errors) == 0
+
+        return LinterResult(passed=passed, violations=all_violations, ...)
+```
+
+### 6.2 执行流程
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     设计 vs 实现对比                         │
+│                    AgentLinterEngine.run()                  │
 ├─────────────────────────────────────────────────────────────┤
+│  Step 1: 检测语言                                           │
+│          └── utils.detect_language(file_path)               │
 │                                                             │
-│  Layer 1 (语法规则)                                         │
-│  ├── RuffRule     ✅ 完整实现                               │
-│  └── ESLintRule   ✅ 完整实现                               │
+│  Step 2: 过滤规则                                           │
+│          ├── 按层级过滤 (layers 参数)                       │
+│          └── 按语言过滤 (is_applicable)                     │
 │                                                             │
-│  Layer 2 (安全规则)                                         │
-│  └── BanditRule   ✅ 完整实现 (含完整修复建议映射)          │
+│  Step 3: 执行规则                                           │
+│          ├── Layer 1: RuffRule / ESLintRule                 │
+│          ├── Layer 2: BanditRule                            │
+│          └── Layer 3: DynamicRule (从 task/rules/ 加载)    │
 │                                                             │
-│  Layer 3 (业务规则)                                         │
-│  ├── ModuleIsolationRule       ✅ Command Handler 实现      │
-│  ├── I18nRule                  ⚠️ 简化实现 (未调用 Haiku)   │
-│  ├── LoggerRule                ✅ Command Handler 实现      │
-│  ├── InterfaceProtectionRule   ⚠️ 简化实现 (未比对签名)     │
-│  └── DynamicRuleLoader         ✅ 基本实现                  │
-│                                                             │
+│  Step 4: 汇总结果                                           │
+│          ├── passed = (errors == 0)                         │
+│          └── 生成摘要                                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 差异分析
-
-| 组件 | 设计要求 | 实际实现 | 差距 |
-|------|---------|---------|------|
-| **Prompt Handler** | 调用 Haiku 进行语义分析 | 使用正则 fallback | 未集成 AI 能力 |
-| **Agent Handler** | spawn 子 Agent 深度验证 | 仅 AST 静态检查 | 未实现 Agent 机制 |
-| **签名比对** | 与历史签名对比 | 仅检测存在性 | 缺少持久化比对 |
-| **配置来源** | plan.md + YAML 文件 | 仅 plan.md | 未支持独立配置文件 |
-
-### 4.3 接口差异
-
-**架构文档设计**:
-
-```python
-class BaseRule:
-    def check(self, code, context) -> RuleResult:
-        pass
-
-class AgentLinterEngine:
-    def run_all_rules(self, code, layer) -> List[RuleResult]:
-        pass
-```
-
-**实际实现**:
-
-```python
-class BaseRule:
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        pass
-
-class AgentLinterEngine:
-    def run(self, file_path: str, content: str, layers: Optional[List[int]] = None) -> LinterResult:
-        pass
-```
-
-**差异说明**:
-
-1. `check()` 参数从 `(code, context)` 改为 `(file_path, content)`
-2. 返回类型从 `RuleResult` 改为 `List[RuleViolation]`
-3. 引擎方法名从 `run_all_rules()` 改为 `run()`
-
 ---
 
-## 5. 使用示例
+## 7. 使用示例
 
-### 5.1 基本使用
+### 7.1 基本使用
 
 ```python
 from lib.linter_engine import AgentLinterEngine
 from lib.rules.layer1_syntax import RuffRule, ESLintRule
 from lib.rules.layer2_security import BanditRule
-from lib.rules.layer3_business import ModuleIsolationRule
+from lib.l3_foundation import load_rules_from_task
 
 # 创建引擎
 engine = AgentLinterEngine()
 
-# 注册规则
+# 注册 Layer 1/2 规则
 engine.register_rule(RuffRule())
 engine.register_rule(ESLintRule())
 engine.register_rule(BanditRule())
-engine.register_rule(ModuleIsolationRule({
-    "allowed_imports": ["src.core", "src.utils"],
-    "forbidden_imports": ["src.internal"]
-}))
+
+# 加载 Layer 3 动态规则
+dynamic_rules = load_rules_from_task("tasks/t1-feature")
+for rule in dynamic_rules:
+    engine.register_rule(rule)
 
 # 运行检查
 result = engine.run("src/auth/service.py", python_code)
@@ -1019,7 +958,7 @@ else:
         print(f"  [{v.severity.value}] {v.rule}: {v.message} (line {v.line})")
 ```
 
-### 5.2 按层级过滤
+### 7.2 按层级过滤
 
 ```python
 # 只运行 Layer 1 (语法检查)
@@ -1029,22 +968,18 @@ result = engine.run("src/auth/service.py", content, layers=[1])
 result = engine.run("src/auth/service.py", content, layers=[2, 3])
 ```
 
-### 5.3 动态加载规则
+### 7.3 生成规则脚本
 
 ```python
-from lib.rules.layer3_business import DynamicRuleLoader
+from lib.l3_foundation import generate_rules_from_plan
 
-loader = DynamicRuleLoader()
-
-# 从 plan.md 加载规则
-rules = loader.load_from_plan("tasks/t1-feature/plan.md")
-
-# 注册到引擎
-for rule in rules:
-    engine.register_rule(rule)
+# 从 plan.md 生成所有规则脚本
+generated = generate_rules_from_task("tasks/t1-feature")
+for path in generated:
+    print(f"✅ 规则脚本已生成: {path}")
 ```
 
-### 5.4 结果序列化
+### 7.4 结果序列化
 
 ```python
 result = engine.run("src/auth/service.py", content)
@@ -1062,11 +997,9 @@ json_result = result.to_json()
 
 ---
 
-## 6. 扩展指南
+## 8. 扩展指南
 
-### 6.1 添加新的语法规则 (Layer 1)
-
-**步骤 1**: 创建规则类
+### 8.1 添加 Layer 1/2 规则
 
 ```python
 # .claude/hooks/lib/rules/layer1_syntax.py
@@ -1076,143 +1009,128 @@ class GolangCILintRule(BaseRule):
 
     name = "golangci-lint"
     layer = 1
-    description = "Go 语法和风格检查 (golangci-lint)"
+    description = "Go 语法和风格检查"
     supported_languages = ["go"]
 
     def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        violations = []
-
-        # 检查工具是否可用
-        try:
-            subprocess.run(["golangci-lint", "version"],
-                          capture_output=True, check=True)
-        except FileNotFoundError:
-            return [RuleViolation(
-                rule="golangci-lint:not_found",
-                message="golangci-lint 未安装",
-                line=0, column=0,
-                severity=Severity.WARNING,
-                suggestion="go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
-                source="layer1"
-            )]
-
-        # 写入临时文件并执行
         temp_file = create_temp_file(content, suffix=".go")
-        try:
-            result = subprocess.run(
-                ["golangci-lint", "run", "--output-format=json", temp_file],
-                capture_output=True, text=True
-            )
-            # 解析输出...
-        finally:
-            os.remove(temp_file)
-
-        return violations
+        result = subprocess.run(
+            ["golangci-lint", "run", "--output-format=json", temp_file],
+            capture_output=True, text=True
+        )
+        # 解析输出...
 ```
 
-**步骤 2**: 注册规则
+### 8.2 添加 Layer 3 业务规则
 
-```python
-engine.register_rule(GolangCILintRule())
-```
-
-### 6.2 添加新的业务规则 (Layer 3)
-
-**步骤 1**: 创建规则类
-
-```python
-# .claude/hooks/lib/rules/layer3_business.py
-
-class TraceIdRule(Layer3Rule):
-    """Trace ID 传递规则 - Prompt Handler"""
-
-    name = "trace_id_required"
-    handler_type = "prompt"
-    description = "检查 trace_id 是否正确传递"
-    layer = 3
-
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
-        violations = []
-        config = self.config or {}
-
-        # 检测函数调用是否传递 trace_id
-        # 示例: 检测 service 层调用是否带 trace_id 参数
-
-        service_pattern = r'(\w+)\.(\w+)\([^)]*\)'
-        for line_num, line in enumerate(content.split('\n'), 1):
-            matches = re.finditer(service_pattern, line)
-            for match in matches:
-                args = match.group(0)
-                if 'trace_id' not in args and 'traceId' not in args:
-                    violations.append(RuleViolation(
-                        rule_name=self.name,
-                        severity=Severity.MINOR,
-                        file_path=file_path,
-                        line_number=line_num,
-                        message=f"调用 {match.group(2)} 未传递 trace_id",
-                        suggestion="确保所有服务调用都传递 trace_id 参数"
-                    ))
-
-        return violations
-```
-
-**步骤 2**: 注册到 DynamicRuleLoader
-
-```python
-class DynamicRuleLoader:
-    RULE_REGISTRY = {
-        "module_isolation": ModuleIsolationRule,
-        "i18n_required": I18nRule,
-        "logger_standard": LoggerRule,
-        "interface_protection": InterfaceProtectionRule,
-        "trace_id_required": TraceIdRule,  # 新增
-    }
-```
-
-**步骤 3**: 在 plan.md 中使用
+**方式 1: 在 plan.md 中定义**
 
 ```markdown
----
-custom_rules:
-  - rule: trace_id_required
-    config:
-      service_modules: ["src/services/", "src/api/"]
----
+## 业务规则
+
+#### 规则 1: Trace ID 传递检查
+
+- **描述**: 所有服务调用必须传递 trace_id 参数
+- **适用范围**: Service 层代码
+- **文件匹配**: src/services/**/*.py
+- **代码特征**: 调用其他服务的函数
+- **Handler**: `command`
+- **严重程度**: `warning`
 ```
 
-### 6.3 扩展建议
+**方式 2: 手动编写规则脚本**
 
-1. **实现 Prompt Handler 的 AI 集成**
-   - 接入 Haiku 模型进行语义分析
-   - 设计 prompt 模板用于 i18n 检测等场景
+```python
+# tasks/t1-feature/rules/trace_id_check.py
 
-2. **实现 Agent Handler 的子 Agent 机制**
-   - 设计 Agent spawn 接口
-   - 实现签名持久化和比对
+name = "trace_id_check"
+layer = 3
+handler_type = "command"
+description = "检查 trace_id 是否正确传递"
 
-3. **支持独立配置文件**
-   - 添加 `.nomos/linter.yaml` 配置支持
-   - 合并 plan.md 和配置文件的规则
+config = {
+    "service_modules": ["src/services/"],
+}
 
-4. **增量检查**
-   - 基于文件 hash 的缓存机制
-   - 只检查变更的文件
+def check(file_path, content):
+    violations = []
+    tree = ASTUtils.parse(content, file_path)
+    calls = ASTUtils.find_function_calls(tree, "*")
+
+    for call in calls:
+        # 检查是否传递了 trace_id
+        if "trace_id" not in call.get("args", ""):
+            violations.append(DynamicViolation(
+                rule=name,
+                message=f"调用 {call['function']} 未传递 trace_id",
+                line=call["line"],
+                column=0,
+                severity=Severity.WARNING
+            ))
+
+    return violations
+
+def should_check(file_path):
+    return FileMatcher.match_patterns(file_path, config.get("service_modules", []))
+```
 
 ---
 
-## 7. 总结
+## 9. 设计 vs 实现对比
+
+### 9.1 完成度分析
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     设计 vs 实现对比                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Layer 1 (语法规则)                                         │
+│  ├── RuffRule     ✅ 完整实现                               │
+│  └── ESLintRule   ✅ 完整实现                               │
+│                                                             │
+│  Layer 2 (安全规则)                                         │
+│  └── BanditRule   ✅ 完整实现 (含完整修复建议映射)          │
+│                                                             │
+│  Layer 3 (业务规则)                                         │
+│  ├── l3_foundation/         ✅ 独立模块实现                 │
+│  ├── DynamicRule            ✅ 完整实现                     │
+│  ├── DynamicRuleLoader      ✅ 安全沙箱实现                 │
+│  ├── RuleGenerator          ✅ AI 生成实现                  │
+│  ├── RuleSyncer             ✅ plan.md 同步实现             │
+│  ├── AIClient               ✅ 零配置设计实现               │
+│  ├── ASTUtils               ✅ 多语言支持实现               │
+│  └── rule_examples/         ✅ 4 个示例                     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 架构演进
+
+| 方面 | 原设计 | 当前实现 |
+|------|--------|---------|
+| Layer 3 位置 | `rules/layer3_business.py` | 独立 `l3_foundation/` 模块 |
+| 规则来源 | plan.md YAML Frontmatter | plan.md "## 业务规则" 章节 |
+| 规则加载 | 直接实例化 | 安全沙箱 + 动态加载 |
+| 规则生成 | 手动编写 | AI 自动生成 |
+| 规则风格 | 仅类继承 | 类继承 + 函数式 |
+
+---
+
+## 10. 总结
 
 N0mosAi Linter 系统通过三层规则体系，实现了从语法到业务的全面代码审查。核心特点包括:
 
 1. **前置审查**: 在代码写入前拦截问题
 2. **三层防护**: Layer 1 (语法) → Layer 2 (安全) → Layer 3 (业务)
-3. **可扩展**: 基于基类的设计便于添加新规则
-4. **动态配置**: 支持从 plan.md 加载项目特定规则
+3. **AI 生成**: Layer 3 规则可从 plan.md 自动生成
+4. **安全沙箱**: 动态规则在受限环境中执行
+5. **多语言支持**: 通过 multilang 模块支持多语言 AST 解析
 
-当前实现完成了核心框架和大部分规则，Prompt Handler 和 Agent Handler 的 AI 能力集成是后续优化的重点方向。
+当前实现已完成核心框架和所有规则层，AI 规则生成和安全沙箱是 Layer 3 的核心能力。
 
 ---
 
-*文档版本: 1.0*
-*最后更新: 2026-02-27*
+*文档版本: 2.0*
+*最后更新: 2026-02-28*
 *来源: N0mosAi 系统架构与代码分析*

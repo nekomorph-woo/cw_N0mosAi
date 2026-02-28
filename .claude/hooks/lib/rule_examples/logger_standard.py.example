@@ -1,0 +1,119 @@
+# 示例规则: Logger 规范检查
+# 这是一个 Prompt Handler 示例，演示如何使用 AI 语义判断
+
+# 规则名称和元信息
+name = "logger_standard"
+layer = 3
+handler_type = "prompt"
+description = "检查是否使用标准 logger 而非 print"
+
+# 规则配置
+config = {
+    'allow_print_in': ["tests", "scripts"],
+    'logger_module': "logging"
+}
+
+# AI 客户端 (单例，由 l3_foundation 提供)
+ai_client = AIClient()
+
+def check(file_path, content):
+    """智能检查: AI 优先, 正则降级"""
+    violations = []
+
+    # 快速预检
+    if not _should_check(file_path, content):
+        return violations
+
+    # 尝试 AI 判断
+    if ai_client.available:
+        prompt = _build_prompt()
+        result = ai_client.call(prompt, content)
+        if result:
+            violations = _parse_ai_result(result)
+
+    # 降级到正则
+    if not violations:
+        violations = _fallback_check(file_path, content)
+
+    return violations
+
+def _should_check(file_path, content):
+    """快速预检"""
+    # 检查是否在允许 print 的目录中
+    allow_print_in = config.get('allow_print_in', [])
+    if any(file_path.startswith(d) for d in allow_print_in):
+        return False
+
+    # 没有 print() 调用, 直接通过
+    import re
+    if not re.search(r'\bprint\s*\(', content):
+        return False
+
+    return True
+
+def _build_prompt():
+    """构建 AI prompt"""
+    return """你是代码审查专家。检查代码中的 print() 使用情况。
+
+规则:
+1. 业务代码中不应使用 print(), 应使用 logger
+2. 脚本和测试代码中可以使用 print()
+3. 调试代码可以使用 print() 但应添加注释说明
+
+返回 JSON 格式:
+{
+  "violations": [
+    {"line": 42, "reason": "业务代码中使用 print() 输出"}
+  ]
+}
+
+如果没有违规, 返回: {"violations": []}"""
+
+def _parse_ai_result(result):
+    """解析 AI 返回结果"""
+    violations = []
+    logger_module = config.get('logger_module', 'logging')
+
+    for item in result.get('violations', []):
+        line_num = item.get('line', 0)
+        reason = item.get('reason', '使用了 print() 进行输出')
+
+        violations.append(DynamicViolation(
+            rule=name,
+            message=reason,
+            line=line_num,
+            column=0,
+            severity=Severity.WARNING,
+            suggestion=f"建议使用 {logger_module} 进行日志记录"
+        ))
+
+    return violations
+
+def _fallback_check(file_path, content):
+    """正则降级检查"""
+    import re
+    violations = []
+    logger_module = config.get('logger_module', 'logging')
+
+    # 检测 print() 调用
+    print_pattern = r'\bprint\s*\('
+    for line_num, line in enumerate(content.split('\n'), 1):
+        if re.search(print_pattern, line):
+            # 跳过注释
+            if line.strip().startswith('#'):
+                continue
+
+            violations.append(DynamicViolation(
+                rule=name,
+                message="使用了 print() 进行输出",
+                line=line_num,
+                column=0,
+                severity=Severity.WARNING,
+                suggestion=f"建议使用 {logger_module} 进行日志记录"
+            ))
+
+    return violations
+
+def should_check(file_path):
+    """判断是否需要检查此文件"""
+    return FileMatcher.match_patterns(file_path, config.get("target_patterns", ["*.py"]))
