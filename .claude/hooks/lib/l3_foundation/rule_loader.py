@@ -12,7 +12,7 @@ import signal
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from .base_rule import BaseRule, RuleViolation, Severity
+from .dynamic_rule import DynamicRule, DynamicViolation, Severity
 
 
 class SecurityError(Exception):
@@ -31,9 +31,9 @@ class DynamicRuleLoader:
             strict_mode: 严格模式 (True=检测到威胁时拒绝加载)
         """
         self.strict_mode = strict_mode
-        self._loaded_rules: Dict[str, List[BaseRule]] = {}
+        self._loaded_rules: Dict[str, List[DynamicRule]] = {}
 
-    def load_from_task(self, task_dir: str) -> List[BaseRule]:
+    def load_from_task(self, task_dir: str) -> List[DynamicRule]:
         """
         从 task 目录加载所有规则
 
@@ -72,7 +72,7 @@ class DynamicRuleLoader:
 
         return rules
 
-    def _load_script_securely(self, script_path: Path) -> List[BaseRule]:
+    def _load_script_securely(self, script_path: Path) -> List[DynamicRule]:
         """
         安全加载单个脚本
 
@@ -114,18 +114,52 @@ class DynamicRuleLoader:
         except TimeoutError:
             raise SecurityError("脚本执行超时 (可能包含无限循环)")
 
-        # 7. 提取所有 BaseRule 子类
+        # 7. 提取所有 DynamicRule 子类和函数式规则
         rules = []
         for name, obj in sandbox_globals.items():
+            # 方式 1: 类继承风格 (继承 DynamicRule)
             if (isinstance(obj, type) and
-                issubclass(obj, BaseRule) and
-                obj is not BaseRule):
+                issubclass(obj, DynamicRule) and
+                obj is not DynamicRule):
                 try:
                     # 实例化规则
                     rule_instance = obj()
                     rules.append(rule_instance)
                 except Exception as e:
                     print(f"⚠️  规则实例化失败: {name}: {e}")
+
+            # 方式 2: 函数式风格 (有 check 和 should_check 函数)
+            # 函数式规则通过元数据标识: name, layer, handler_type
+            if name == "check" and callable(obj):
+                # 检查是否有函数式规则的标识
+                rule_meta = sandbox_globals.get("name")
+                if rule_meta and isinstance(rule_meta, str):
+                    try:
+                        # 创建函数式规则的包装类
+                        class FunctionalRuleWrapper(DynamicRule):
+                            name = sandbox_globals.get("name", "unknown")
+                            layer = sandbox_globals.get("layer", 3)
+                            description = sandbox_globals.get("description", "")
+                            handler_type = sandbox_globals.get("handler_type", "command")
+
+                            def __init__(self):
+                                super().__init__(config=sandbox_globals.get("config", {}))
+                                self._check_fn = obj
+                                self._should_check_fn = sandbox_globals.get("should_check")
+
+                            def check(self, file_path: str, content: str) -> List[DynamicViolation]:
+                                return self._check_fn(file_path, content) if self._check_fn else []
+
+                            def should_check(self, file_path: str) -> bool:
+                                if self._should_check_fn and callable(self._should_check_fn):
+                                    return self._should_check_fn(file_path)
+                                return True
+
+                        rule_instance = FunctionalRuleWrapper()
+                        rules.append(rule_instance)
+                        break  # 只处理一次函数式规则
+                    except Exception as e:
+                        print(f"⚠️  函数式规则包装失败: {e}")
 
         return rules
 
@@ -274,7 +308,7 @@ class DynamicRuleLoader:
         }
 
         # 导入 l3_foundation 模块
-        from . import base_rule, ai_client, ast_utils, prompt_builder, rule_context
+        from . import dynamic_rule, ai_client, ast_utils, prompt_builder, rule_context
 
         # 2. 注入白名单模块
         sandbox_globals = {
@@ -283,9 +317,11 @@ class DynamicRuleLoader:
             "__file__": "dynamic_rule.py",
 
             # 注入 l3_foundation 基础能力
-            "BaseRule": base_rule.BaseRule,
-            "RuleViolation": base_rule.RuleViolation,
-            "Severity": base_rule.Severity,
+            "DynamicRule": dynamic_rule.DynamicRule,
+            "BaseRule": dynamic_rule.DynamicRule,  # 别名，向后兼容
+            "DynamicViolation": dynamic_rule.DynamicViolation,
+            "RuleViolation": dynamic_rule.DynamicViolation,  # 别名，向后兼容
+            "Severity": dynamic_rule.Severity,
             "AIClient": ai_client.AIClient,
             "ASTUtils": ast_utils.ASTUtils,
             "PromptBuilder": prompt_builder.PromptBuilder,
@@ -324,7 +360,7 @@ class DynamicRuleLoader:
             signal.signal(signal.SIGALRM, old_handler)
 
 
-def load_rules_from_task(task_dir: str, strict_mode: bool = True) -> List[BaseRule]:
+def load_rules_from_task(task_dir: str, strict_mode: bool = True) -> List[DynamicRule]:
     """
     便捷函数: 从 task 目录加载规则
 
@@ -333,7 +369,7 @@ def load_rules_from_task(task_dir: str, strict_mode: bool = True) -> List[BaseRu
         strict_mode: 严格模式
 
     Returns:
-        规则实例列表
+        动态规则实例列表
     """
     loader = DynamicRuleLoader(strict_mode=strict_mode)
     return loader.load_from_task(task_dir)

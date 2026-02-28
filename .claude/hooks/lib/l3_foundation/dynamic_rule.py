@@ -1,7 +1,11 @@
 """
-基础规则模块 - 定义规则基类和数据结构
+动态规则模块 - 定义 Layer 3 动态规则基类和数据结构
 
 l3_foundation 基础能力层核心模块
+
+与 rules/base_rule.py 的区别:
+- rules/base_rule.py: Layer 1/2 静态规则 (Ruff, ESLint, Bandit 等)
+- dynamic_rule.py: Layer 3 动态规则 (用户自定义业务规则)
 """
 
 from enum import Enum
@@ -17,8 +21,8 @@ class Severity(Enum):
 
 
 @dataclass
-class RuleViolation:
-    """规则违规记录"""
+class DynamicViolation:
+    """动态规则违规记录 - Layer 3 专用"""
     rule: str              # 规则名称
     message: str           # 违规描述
     line: int              # 行号
@@ -40,12 +44,17 @@ class RuleViolation:
         }
 
 
-class BaseRule:
-    """规则基类 - 所有规则必须继承此类"""
+class DynamicRule:
+    """动态规则基类 - Layer 3 业务规则必须继承此类
+
+    与 BaseRule (rules/base_rule.py) 的区别:
+    - BaseRule: 用于 Layer 1/2 静态规则，有 supported_languages, is_applicable()
+    - DynamicRule: 用于 Layer 3 动态规则，有 handler_type, config, should_check()
+    """
 
     # 规则元信息 (子类必须定义)
     name: str = ""              # 规则名称
-    layer: int = 3              # 规则层级
+    layer: int = 3              # 规则层级 (固定为 3)
     description: str = ""       # 规则描述
     handler_type: str = "command"  # handler 类型: command / prompt
 
@@ -58,7 +67,7 @@ class BaseRule:
         """
         self.config = config or {}
 
-    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+    def check(self, file_path: str, content: str) -> List[DynamicViolation]:
         """
         检查代码是否违规
 

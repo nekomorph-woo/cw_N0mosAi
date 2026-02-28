@@ -56,7 +56,7 @@ def check(file_path, content):
     tree = ASTUtils.parse(content, file_path)
 
     # 实现检查逻辑...
-    # violations.append(RuleViolation(...))
+    # violations.append(RuleViolation(...))  # 或 DynamicViolation(...)
 
     return violations
 
@@ -64,6 +64,8 @@ def should_check(file_path):
     """判断是否需要检查此文件"""
     return True  # 或根据文件类型/路径判断
 ```
+
+> **注意**: `RuleViolation` 和 `DynamicViolation` 是同一个类，可以互换使用。
 
 ### Prompt Handler 模板
 
@@ -82,6 +84,24 @@ ai_client = AIClient()
 
 def check(file_path, content):
     """智能检查: AI 优先, 正则降级"""
+    violations = []
+
+    # 快速预检
+    if not _should_check(file_path, content):
+        return violations
+
+    # AI 判断
+    if ai_client.available:
+        prompt = _build_prompt()
+        result = ai_client.call(prompt, content)
+        if result:
+            violations = _parse_ai_result(result)
+
+    # 降级到正则
+    if not violations:
+        violations = _fallback_check(file_path, content)
+
+    return violations
     violations = []
 
     # 快速预检
@@ -126,13 +146,17 @@ def should_check(file_path):
 
 所有规则脚本都可以使用 l3_foundation 提供的基础能力：
 
-- `BaseRule`: 规则基类
-- `RuleViolation`: 违规记录
+- `DynamicRule`: 动态规则基类 (Layer 3 专用)
+  - 别名: `BaseRule` (向后兼容)
+- `DynamicViolation`: 动态规则违规记录
+  - 别名: `RuleViolation` (向后兼容)
 - `Severity`: 严重程度枚举 (ERROR, WARNING, INFO)
 - `AIClient`: AI 调用客户端
 - `ASTUtils`: AST 解析工具 (多语言支持)
 - `PromptBuilder`: Prompt 构建器
 - `RuleContext`: 规则上下文
+
+> **注意**: 新代码推荐使用 `DynamicRule` 和 `DynamicViolation`，旧名称 (`BaseRule`, `RuleViolation`) 仍然可用以保持向后兼容。
 
 ## 🚀 创建新规则
 

@@ -137,10 +137,10 @@ COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的
 ## 生成要求
 
 1. **Handler 类型**: Command Handler (使用 AST 静态分析)
-2. **脚本模板**: 必须继承 BaseRule
+2. **脚本模板**: 必须继承 DynamicRule
 3. **基础能力**: 必须使用 l3_foundation 提供的能力
-   - BaseRule: 规则基类
-   - RuleViolation: 违规记录
+   - DynamicRule: 动态规则基类 (Layer 3 专用)
+   - DynamicViolation: 动态规则违规记录
    - Severity: 严重程度
    - ASTUtils: AST 解析工具
    - RuleContext: 规则上下文
@@ -149,7 +149,7 @@ COMMAND_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的
    - 使用 ASTUtils.parse() 解析代码
    - 使用 ASTUtils.find_functions() / find_classes() 查找目标
    - 实现具体的检查逻辑
-   - 返回 RuleViolation 列表
+   - 返回 DynamicViolation 列表
 
 5. **文件过滤**:
    - 实现 should_check() 方法
@@ -175,10 +175,10 @@ PROMPT_HANDLER_TEMPLATE = """你是 Python 代码生成专家。根据用户的�
 ## 生成要求
 
 1. **Handler 类型**: Prompt Handler (使用 AI 语义分析)
-2. **脚本模板**: 必须继承 BaseRule
+2. **脚本模板**: 必须继承 DynamicRule
 3. **基础能力**: 必须使用 l3_foundation 提供的能力
-   - BaseRule: 规则基类
-   - RuleViolation: 违规记录
+   - DynamicRule: 动态规则基类 (Layer 3 专用)
+   - DynamicViolation: 动态规则违规记录
    - Severity: 严重程度
    - AIClient: AI 调用客户端
    - PromptBuilder: Prompt 构建器
