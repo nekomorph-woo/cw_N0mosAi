@@ -7,6 +7,14 @@ pyyaml>=6.0
 ruff>=0.1.0
 bandit>=1.7.0
 
-# 可选：多语言支持
-# tree-sitter>=0.20.0
-# tree-sitter-languages>=1.8.0
+# 多语言语法支持 (Tree-sitter 0.25+)
+tree-sitter>=0.25.0
+# 语言包 (按需安装)
+tree-sitter-go>=0.25.0
+tree-sitter-java>=0.23.0
+tree-sitter-rust>=0.24.0
+tree-sitter-ruby>=0.23.0
+# tree-sitter-c>=0.23.0
+# tree-sitter-cpp>=0.23.0
+# tree-sitter-php>=0.23.0
+# tree-sitter-lua>=0.2.0

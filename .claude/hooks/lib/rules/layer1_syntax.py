@@ -1,5 +1,8 @@
 """
 第一层规则: 语法和风格检查
+
+Tier 1: Python (Ruff), JS/TS (ESLint) - 原生工具
+Tier 2: 其他语言 (Tree-sitter) - 语法检查
 """
 
 import subprocess
@@ -7,6 +10,7 @@ import json
 import os
 import sys
 from typing import List
+from pathlib import Path
 from .base_rule import BaseRule, RuleViolation, Severity
 from ..utils import create_temp_file
 
@@ -200,3 +204,107 @@ class ESLintRule(BaseRule):
                 os.remove(temp_file)
 
         return violations
+
+
+class TreeSitterRule(BaseRule):
+    """Tree-sitter 通用语法检查 (Tier 2)
+
+    用于支持更多编程语言的语法检查
+    仅检测语法错误，不提供风格建议
+    """
+
+    name = "tree-sitter"
+    layer = 1
+    description = "多语言语法检查 (Tree-sitter)"
+    # 支持的语言由 TreeSitterEngine 动态决定
+    supported_languages = [
+        "go", "java", "rust", "c", "cpp", "c_sharp",
+        "ruby", "php", "swift", "kotlin", "scala",
+        "lua", "perl", "r"
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self._engine = None
+        self._initialized = False
+
+    def _init_engine(self):
+        """延迟初始化 Tree-sitter 引擎"""
+        if self._initialized:
+            return
+
+        try:
+            from ..multilang import TreeSitterEngine, Language
+            self._engine = TreeSitterEngine()
+        except ImportError:
+            self._engine = None
+
+        self._initialized = True
+
+    def check(self, file_path: str, content: str) -> List[RuleViolation]:
+        """使用 Tree-sitter 检查语法错误
+
+        Args:
+            file_path: 文件路径
+            content: 文件内容
+
+        Returns:
+            违规列表
+        """
+        violations = []
+
+        # 延迟初始化
+        self._init_engine()
+
+        if not self._engine:
+            # Tree-sitter 不可用，跳过检查
+            return violations
+
+        try:
+            from ..multilang import Language
+
+            # 检测语言
+            detector = self._get_detector()
+            language = detector.detect(Path(file_path))
+
+            if language == Language.UNKNOWN:
+                return violations
+
+            # 检查语法
+            passed, errors = self._engine.check_syntax(content, language)
+
+            for error in errors:
+                violations.append(RuleViolation(
+                    rule="tree-sitter:syntax-error",
+                    message=error.message,
+                    line=error.line,
+                    column=error.column,
+                    severity=Severity.ERROR,
+                    suggestion="检查语法是否正确",
+                    source="layer1"
+                ))
+
+        except Exception:
+            # Tree-sitter 检查失败，不阻塞
+            pass
+
+        return violations
+
+    def _get_detector(self):
+        """获取语言检测器"""
+        try:
+            from ..multilang import LanguageDetector
+            return LanguageDetector()
+        except ImportError:
+            return None
+
+    def is_applicable(self, language: str) -> bool:
+        """判断规则是否适用于指定语言
+
+        Tree-sitter 规则不应用于 Tier 1 语言
+        """
+        # Tier 1 语言由原生工具处理
+        tier1 = {"python", "javascript", "typescript"}
+        if language.lower() in tier1:
+            return False
+        return super().is_applicable(language)
