@@ -33,14 +33,17 @@ fi
 # 主逻辑
 # ============================================================
 
-# 从 stdin 读取 tool_input JSON
-TOOL_INPUT=$(cat)
+# 从 stdin 读取 tool_input JSON 并保存到临时文件
+# (避免 bash echo 解释转义字符)
+TOOL_INPUT_FILE=$(mktemp)
+cat > "$TOOL_INPUT_FILE"
 
 # 提取文件路径
-FILE_PATH=$(echo "$TOOL_INPUT" | $PYTHON_BIN -c "
+FILE_PATH=$($PYTHON_BIN -c "
 import sys, json
 try:
-    data = json.load(sys.stdin)
+    with open('$TOOL_INPUT_FILE', 'r') as f:
+        data = json.load(f)
     print(data.get('file_path', data.get('path', '')))
 except:
     print('')
@@ -111,13 +114,44 @@ case "$FILE_PATH" in
 esac
 
 # 运行 AgentLinterEngine (集成动态规则加载)
+# 方案 B: Edit 工具合并原文件内容后检查
+# 使用临时文件传递 tool_input 避免 bash 转义问题
 RESULT=$($PYTHON_BIN -c "
 import sys, json, os
 sys.path.insert(0, '.claude/hooks')
 
+def get_full_content_for_edit(file_path, old_string, new_string):
+    '''
+    获取 Edit 操作后的完整文件内容
+
+    策略:
+    1. 文件不存在 → 返回 new_string (新文件场景)
+    2. old_string 在文件中 → 替换后返回完整内容
+    3. old_string 不在文件中 → 返回 new_string (降级处理)
+    '''
+    # 文件不存在，这是新文件
+    if not os.path.exists(file_path):
+        return new_string
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            original = f.read()
+
+        # 检查 old_string 是否在文件中
+        if old_string and old_string in original:
+            # 执行替换，返回完整内容
+            return original.replace(old_string, new_string, 1)
+        else:
+            # old_string 不存在，降级为只检查 new_string
+            # 这种情况可能是 replace_all=True 或其他边界情况
+            return new_string
+    except Exception:
+        # 读取失败，降级为只检查 new_string
+        return new_string
+
 try:
     from lib.linter_engine import AgentLinterEngine
-    from lib.rules.layer1_syntax import RuffRule, ESLintRule
+    from lib.rules.layer1_syntax import RuffRule, ESLintRule, TreeSitterRule
     from lib.rules.layer2_security import BanditRule
     # l3_foundation: 动态规则系统
     from lib.l3_foundation import load_rules_from_task, RuleContext
@@ -125,8 +159,11 @@ try:
     engine = AgentLinterEngine()
 
     # Layer 1: 语法规则
+    # Tier 1: 原生工具 (Python -> Ruff, JS/TS -> ESLint)
     engine.register_rule(RuffRule())
     engine.register_rule(ESLintRule())
+    # Tier 2: Tree-sitter (其他语言)
+    engine.register_rule(TreeSitterRule())
 
     # Layer 2: 安全规则
     engine.register_rule(BanditRule())
@@ -147,13 +184,30 @@ try:
             # 动态规则加载失败不影响其他规则
             print(f'[动态规则加载警告] {str(e)}', file=sys.stderr)
 
-    # 从 stdin 读取内容
-    tool_input = json.loads('''$TOOL_INPUT''')
+    # 从临时文件读取 tool_input (避免 bash 转义问题)
+    with open('$TOOL_INPUT_FILE', 'r') as f:
+        tool_input = json.load(f)
     file_path = tool_input.get('file_path', tool_input.get('path', ''))
-    content = tool_input.get('content', tool_input.get('new_string', ''))
 
-    result = engine.run(file_path, content)
-    print(json.dumps(result.to_json()))
+    # 判断工具类型，获取完整内容
+    if 'content' in tool_input:
+        # Write 工具: 直接使用 content
+        full_content = tool_input['content']
+    elif 'new_string' in tool_input:
+        # Edit 工具: 合并原文件内容
+        old_string = tool_input.get('old_string', '')
+        new_string = tool_input['new_string']
+        full_content = get_full_content_for_edit(file_path, old_string, new_string)
+    else:
+        # 未知工具类型，跳过检查
+        full_content = ''
+
+    if full_content:
+        result = engine.run(file_path, full_content)
+        print(json.dumps(result.to_json()))
+    else:
+        # 无内容，直接通过
+        print(json.dumps({'passed': True, 'file_path': file_path, 'violations': [], 'summary': '无内容，跳过检查'}))
 except Exception as e:
     # 如果 Linter 执行失败，记录错误但不阻塞
     import traceback
@@ -166,9 +220,9 @@ except Exception as e:
 ")
 
 # 检查结果
-PASSED=$(echo "$RESULT" | $PYTHON_BIN -c "import sys,json; print(json.load(sys.stdin)['passed'])")
+PASSED=$(echo "$RESULT" | $PYTHON_BIN -c "import sys,json; print(str(json.load(sys.stdin)['passed']).lower())")
 
-if [ "$PASSED" = "True" ]; then
+if [ "$PASSED" = "true" ]; then
   echo '{"decision": "approve"}'
 else
   # 构造拒绝消息，包含错误详情
@@ -186,3 +240,6 @@ output = {'decision': 'reject', 'message': msg}
 print(json.dumps(output))
 "
 fi
+
+# 清理临时文件
+rm -f "$TOOL_INPUT_FILE"
