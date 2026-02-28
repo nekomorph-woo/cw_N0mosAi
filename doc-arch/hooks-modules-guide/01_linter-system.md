@@ -81,11 +81,15 @@ nOmOsAi Linter 系统的核心目标是实现 **"前置 Review"** -- 在代码�
 │  │              AgentLinterEngine (核心引擎)               ││
 │  │  ┌─────────────────────────────────────────────────────┐││
 │  │  │  Layer 1: rules/layer1_syntax.py                   │││
-│  │  │           RuffRule, ESLintRule                     │││
+│  │  │  ├── RuffRule (Tier 1: Python)                     │││
+│  │  │  ├── ESLintRule (Tier 1: JS/TS)                    │││
+│  │  │  └── TreeSitterRule (Tier 2: Go/Java/Rust/...)     │││
 │  │  └─────────────────────────────────────────────────────┘││
 │  │  ┌─────────────────────────────────────────────────────┐││
 │  │  │  Layer 2: rules/layer2_security.py                 │││
-│  │  │           BanditRule                               │││
+│  │  │  ├── BanditRule (Tier 1: Python 安全)              │││
+│  │  │  ├── ESLintSecurityRule (Tier 1: JS/TS 安全)       │││
+│  │  │  └── TreeSitterSecurityRule (Tier 2: 通用安全)     │││
 │  │  └─────────────────────────────────────────────────────┘││
 │  │  ┌─────────────────────────────────────────────────────┐││
 │  │  │  Layer 3: l3_foundation/ (动态规则基础能力层)      │││
@@ -275,11 +279,98 @@ class ESLintRule(BaseRule):
             return []  # 返回空列表，不阻塞
 ```
 
+**实现要点**:
+
+- 未安装时静默跳过，不阻塞流程
+- 根据文件路径确定扩展名 (.js/.ts)
+- 错误级别 (severity=2) 为 ERROR，其他为 WARNING
+
+#### TreeSitterRule (Tier 2 语言)
+
+**文件**: `.claude/hooks/lib/rules/layer1_syntax.py:209-311`
+
+```python
+class TreeSitterRule(BaseRule):
+    """Tree-sitter 通用语法检查 (Tier 2)
+
+    用于支持更多编程语言的语法检查
+    仅检测语法错误，不提供风格建议
+    """
+
+    name = "tree-sitter"
+    layer = 1
+    description = "多语言语法检查 (Tree-sitter)"
+    supported_languages = [
+        "go", "java", "rust", "c", "cpp", "c_sharp",
+        "ruby", "php", "swift", "kotlin", "scala",
+        "lua", "perl", "r"
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self._engine = None
+        self._initialized = False
+
+    def _init_engine(self):
+        """延迟初始化 Tree-sitter 引擎"""
+        if self._initialized:
+            return
+        try:
+            from ..multilang import TreeSitterEngine
+            self._engine = TreeSitterEngine()
+        except ImportError:
+            self._engine = None
+        self._initialized = True
+
+    def is_applicable(self, language: str) -> bool:
+        """判断规则是否适用于指定语言
+
+        Tree-sitter 规则不应用于 Tier 1 语言
+        """
+        # Tier 1 语言由原生工具处理
+        tier1 = {"python", "javascript", "typescript"}
+        if language.lower() in tier1:
+            return False
+        return super().is_applicable(language)
+```
+
+**实现要点**:
+
+- **延迟初始化**: 首次使用时才加载 Tree-sitter 引擎，避免不必要的开销
+- **Tier 分层**: Tier 1 (Python/JS/TS) 使用原生工具，Tier 2 使用 Tree-sitter
+- **仅语法检查**: 只检测语法错误，不提供代码风格建议
+- **依赖可选**: Tree-sitter 未安装时静默跳过
+
+**支持的语言**:
+
+| 语言 | 文件扩展名 | 依赖 |
+|------|-----------|------|
+| Go | .go | tree-sitter-go |
+| Java | .java | tree-sitter-java |
+| Rust | .rs | tree-sitter-rust |
+| C/C++ | .c, .cpp, .h | tree-sitter-c, tree-sitter-cpp |
+| Ruby | .rb | tree-sitter-ruby |
+| PHP | .php | tree-sitter-php |
+| Swift | .swift | tree-sitter-swift |
+| Kotlin | .kt | tree-sitter-kotlin |
+| Scala | .scala | tree-sitter-scala |
+| Lua | .lua | tree-sitter-lua |
+| Perl | .pl, .pm | tree-sitter-perl |
+| R | .r, .R | tree-sitter-r |
+
 ### 3.4 Layer 2: 安全检查
+
+Layer 2 安全检查同样采用 **Tier 分层设计**:
+
+| Tier | 规则 | 语言 | 检测方式 |
+|------|-----|------|---------|
+| Tier 1 | BanditRule | Python | Bandit CLI |
+| Tier 1 | ESLintSecurityRule | JS/TS | Node.js Linter API |
+| Tier 2 | TreeSitterSecurityRule | 15+ 语言 | Tree-sitter + 正则 |
 
 #### BanditRule (Python 安全扫描)
 
-**文件**: `.claude/hooks/lib/rules/layer2_security.py`
+**文件**: `.claude/hooks/lib/rules/layer2_security.py:51-201`
 
 ```python
 class BanditRule(BaseRule):
@@ -304,7 +395,7 @@ class BanditRule(BaseRule):
         )
 ```
 
-**内置修复建议映射** (行 132-200):
+**内置修复建议映射** (行 133-200):
 
 | 类别 | 示例规则 | 严重程度 | 修复建议 |
 |------|---------|---------|---------|
@@ -313,6 +404,172 @@ class BanditRule(BaseRule):
 | SQL 注入 | B608/B610/B611 | ERROR | 使用参数化查询 |
 | 不安全序列化 | B301/B302 | WARNING | 考虑使用 json |
 | 弱加密 | B303/B304/B305 | WARNING | 使用安全的加密算法 |
+
+#### ESLintSecurityRule (JS/TS 安全扫描)
+
+**文件**: `.claude/hooks/lib/rules/layer2_security.py:204-346`
+
+```python
+class ESLintSecurityRule(BaseRule):
+    """ESLint Security 插件封装 (JS/TS 安全检查)
+
+    使用 Node.js 脚本调用 ESLint Linter API，避免 CLI 路径限制
+    """
+
+    name = "eslint-security"
+    layer = 2
+    description = "JavaScript/TypeScript 安全漏洞扫描 (ESLint Security)"
+    supported_languages = ["javascript", "typescript"]
+
+    # ESLint 检查脚本 (使用 Linter API with eslintrc mode)
+    ESLINT_SCRIPT = '''
+    const { Linter } = require("eslint");
+    const securityPlugin = require("eslint-plugin-security");
+
+    // 使用 eslintrc 模式以支持 defineRule
+    const linter = new Linter({ configType: "eslintrc" });
+
+    // 注册 security 插件规则
+    Object.entries(securityPlugin.rules).forEach(([name, rule]) => {
+        linter.defineRule(`security/${name}`, rule);
+    });
+
+    // 安全规则配置
+    const config = {
+        rules: {
+            "security/detect-eval-with-expression": "error",
+            "security/detect-non-literal-require": "error",
+            "security/detect-non-literal-fs-filename": "warn",
+            "security/detect-unsafe-regex": "error",
+            // ... 更多规则
+        }
+    };
+
+    const messages = linter.verify(code, config);
+    console.log(JSON.stringify(messages));
+    '''
+```
+
+**实现要点**:
+
+- **Node.js Linter API**: 使用 `new Linter({ configType: "eslintrc" })` 兼容 ESLint 9
+- **12 个安全规则**: 覆盖 eval、命令注入、正则安全、随机数等
+- **依赖检测**: 自动检测 eslint-plugin-security 是否可用
+
+**安全规则列表**:
+
+| 规则 | 严重程度 | 检测内容 |
+|------|---------|---------|
+| detect-eval-with-expression | ERROR | 动态 eval() 调用 |
+| detect-non-literal-require | ERROR | 动态 require() |
+| detect-non-literal-fs-filename | WARN | 动态文件路径 |
+| detect-unsafe-regex | ERROR | 危险正则 (ReDoS) |
+| detect-non-literal-regexp | WARN | 动态正则表达式 |
+| detect-child-process | WARN | 子进程调用 |
+| detect-new-buffer | ERROR | 不安全的 Buffer 构造 |
+| detect-pseudoRandomBytes | ERROR | 伪随机数生成 |
+| detect-possible-timing-attacks | WARN | 时序攻击风险 |
+| detect-buffer-noassert | WARN | Buffer 边界检查 |
+| detect-disable-mustache-escape | ERROR | 禁用模板转义 |
+| detect-object-injection | WARN | 对象属性注入 |
+
+#### TreeSitterSecurityRule (通用安全检测)
+
+**文件**: `.claude/hooks/lib/rules/layer2_security.py:348-631`
+
+```python
+class TreeSitterSecurityRule(BaseRule):
+    """Tree-sitter 通用安全检测 (Tier 2 语言)
+
+    使用 AST 分析检测跨语言的安全问题模式，无需安装额外工具。
+    适用于 Go, Java, Rust, Ruby, PHP 等语言。
+    """
+
+    name = "tree-sitter-security"
+    layer = 2
+    description = "通用安全模式检测 (Tree-sitter AST)"
+    supported_languages = [
+        "go", "java", "rust", "c", "cpp", "c_sharp",
+        "ruby", "php", "swift", "kotlin", "scala",
+        "lua", "perl", "r",
+        # 也支持 Python/JS，但原生工具优先
+        "python", "javascript", "typescript"
+    ]
+```
+
+**检测能力**:
+
+##### 1. 硬编码密钥检测 (8 种模式)
+
+```python
+SECRET_PATTERNS = [
+    (r'(?i)(password|passwd|pwd)\s*:?=\s*["\'][^"\']{4,}["\']', "硬编码密码"),
+    (r'(?i)(api_key|apikey|api-key)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码 API Key"),
+    (r'(?i)(secret|secret_key)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码密钥"),
+    (r'(?i)(token|access_token)\s*:?=\s*["\'][^"\']{8,}["\']', "硬编码 Token"),
+    (r'(?i)(private_key|privatekey)\s*:?=\s*["\'][^"\']{20,}["\']', "硬编码私钥"),
+    (r'["\']sk-[a-zA-Z0-9]{20,}["\']', "疑似 OpenAI API Key"),
+    (r'["\']AKIA[0-9A-Z]{16}["\']', "疑似 AWS Access Key"),
+    (r'["\']ghp_[a-zA-Z0-9]{36}["\']', "疑似 GitHub Token"),
+]
+```
+
+**特点**: 支持多种赋值语法 (`=`, `:=`, Go 风格)
+
+##### 2. SQL 注入检测 (4 种模式)
+
+```python
+SQL_INJECTION_PATTERNS = [
+    (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*\+', "SQL 字符串拼接"),
+    (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*format\(', "SQL 格式化字符串"),
+    (r'["\']\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\s+.*["\'].*\%', "SQL 格式化字符串"),
+    (r'f["\'].*\{.*\}.*["\'].*\b(SELECT|INSERT|UPDATE|DELETE|DROP)\b', "SQL f-string 注入"),
+]
+```
+
+##### 3. 危险函数调用检测 (15+ 函数)
+
+```python
+DANGEROUS_FUNCTIONS = {
+    # 代码执行
+    "eval": "避免动态代码执行，可能导致代码注入",
+    "exec": "避免动态代码执行，可能导致代码注入",
+    "execfile": "避免动态代码执行，可能导致代码注入",
+    # 命令执行
+    "system": "避免直接执行系统命令，验证输入",
+    "popen": "避免直接执行系统命令，验证输入",
+    "shell_exec": "避免直接执行 shell 命令",
+    "Runtime.getRuntime": "避免直接执行系统命令",
+    "os/exec": "验证命令参数",
+    "Command::new": "验证命令参数",
+    # 文件操作
+    "unlink": "验证文件路径，防止路径遍历",
+    "remove": "验证文件路径，防止路径遍历",
+    # ... 更多
+}
+```
+
+**检测策略**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              TreeSitterSecurityRule 检测流程                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. 硬编码密钥检测                                          │
+│     └── 正则匹配 → 跳过注释行 → 报告 ERROR                  │
+│                                                             │
+│  2. SQL 注入检测                                            │
+│     └── 正则匹配 → 报告 ERROR                               │
+│                                                             │
+│  3. 危险函数调用检测                                        │
+│     ├── 优先: Tree-sitter AST 解析                          │
+│     │   └── 遍历 call_expression → 提取函数名 → 匹配        │
+│     └── 降级: 文本正则匹配                                  │
+│         └── 跳过注释 → 匹配函数调用模式 → 报告 WARNING      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -912,8 +1169,14 @@ class AgentLinterEngine:
 │          └── 按语言过滤 (is_applicable)                     │
 │                                                             │
 │  Step 3: 执行规则                                           │
-│          ├── Layer 1: RuffRule / ESLintRule                 │
-│          ├── Layer 2: BanditRule                            │
+│          ├── Layer 1:                                       │
+│          │   ├── RuffRule (Python)                          │
+│          │   ├── ESLintRule (JS/TS)                         │
+│          │   └── TreeSitterRule (Go/Java/Rust/...)          │
+│          ├── Layer 2:                                       │
+│          │   ├── BanditRule (Python 安全)                   │
+│          │   ├── ESLintSecurityRule (JS/TS 安全)            │
+│          │   └── TreeSitterSecurityRule (通用安全)          │
 │          └── Layer 3: DynamicRule (从 task/rules/ 加载)    │
 │                                                             │
 │  Step 4: 汇总结果                                           │
@@ -930,17 +1193,22 @@ class AgentLinterEngine:
 
 ```python
 from lib.linter_engine import AgentLinterEngine
-from lib.rules.layer1_syntax import RuffRule, ESLintRule
-from lib.rules.layer2_security import BanditRule
+from lib.rules.layer1_syntax import RuffRule, ESLintRule, TreeSitterRule
+from lib.rules.layer2_security import BanditRule, ESLintSecurityRule, TreeSitterSecurityRule
 from lib.l3_foundation import load_rules_from_task
 
 # 创建引擎
 engine = AgentLinterEngine()
 
-# 注册 Layer 1/2 规则
-engine.register_rule(RuffRule())
-engine.register_rule(ESLintRule())
-engine.register_rule(BanditRule())
+# 注册 Layer 1 规则
+engine.register_rule(RuffRule())       # Python 语法
+engine.register_rule(ESLintRule())     # JS/TS 语法
+engine.register_rule(TreeSitterRule()) # Go/Java/Rust 等语法
+
+# 注册 Layer 2 规则
+engine.register_rule(BanditRule())             # Python 安全
+engine.register_rule(ESLintSecurityRule())     # JS/TS 安全
+engine.register_rule(TreeSitterSecurityRule()) # 通用安全
 
 # 加载 Layer 3 动态规则
 dynamic_rules = load_rules_from_task("tasks/t1-feature")
@@ -1086,11 +1354,14 @@ def should_check(file_path):
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Layer 1 (语法规则)                                         │
-│  ├── RuffRule     ✅ 完整实现                               │
-│  └── ESLintRule   ✅ 完整实现                               │
+│  ├── RuffRule         ✅ 完整实现 (Python)                  │
+│  ├── ESLintRule       ✅ 完整实现 (JS/TS)                   │
+│  └── TreeSitterRule   ✅ 完整实现 (15+ 语言)               │
 │                                                             │
 │  Layer 2 (安全规则)                                         │
-│  └── BanditRule   ✅ 完整实现 (含完整修复建议映射)          │
+│  ├── BanditRule            ✅ 完整实现 (Python 安全)        │
+│  ├── ESLintSecurityRule    ✅ 完整实现 (JS/TS 安全)         │
+│  └── TreeSitterSecurityRule ✅ 完整实现 (通用安全)          │
 │                                                             │
 │  Layer 3 (业务规则)                                         │
 │  ├── l3_foundation/         ✅ 独立模块实现                 │
@@ -1105,10 +1376,28 @@ def should_check(file_path):
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 9.2 架构演进
+### 9.2 规则矩阵
+
+| 语言 | Layer 1 语法 | Layer 2 安全 | 工具依赖 |
+|------|-------------|-------------|---------|
+| Python | RuffRule | BanditRule | ruff, bandit |
+| JavaScript | ESLintRule | ESLintSecurityRule | eslint, eslint-plugin-security |
+| TypeScript | ESLintRule | ESLintSecurityRule | eslint, eslint-plugin-security |
+| Go | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-go |
+| Java | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-java |
+| Rust | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-rust |
+| C/C++ | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-c/cpp |
+| Ruby | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-ruby |
+| PHP | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-php |
+| 其他 5+ | TreeSitterRule | TreeSitterSecurityRule | tree-sitter-* |
+
+### 9.3 架构演进
 
 | 方面 | 原设计 | 当前实现 |
 |------|--------|---------|
+| Layer 1 规则 | RuffRule, ESLintRule | + TreeSitterRule (15+ 语言) |
+| Layer 2 规则 | BanditRule | + ESLintSecurityRule, TreeSitterSecurityRule |
+| Tier 分层 | 无 | Tier 1 (原生工具) + Tier 2 (Tree-sitter) |
 | Layer 3 位置 | `rules/layer3_business.py` | 独立 `l3_foundation/` 模块 |
 | 规则来源 | plan.md YAML Frontmatter | plan.md "## 业务规则" 章节 |
 | 规则加载 | 直接实例化 | 安全沙箱 + 动态加载 |
@@ -1123,14 +1412,15 @@ nOmOsAi Linter 系统通过三层规则体系，实现了从语法到业务的�
 
 1. **前置审查**: 在代码写入前拦截问题
 2. **三层防护**: Layer 1 (语法) → Layer 2 (安全) → Layer 3 (业务)
-3. **AI 生成**: Layer 3 规则可从 plan.md 自动生成
-4. **安全沙箱**: 动态规则在受限环境中执行
-5. **多语言支持**: 通过 multilang 模块支持多语言 AST 解析
+3. **Tier 分层**: Tier 1 (原生工具) + Tier 2 (Tree-sitter 通用)
+4. **多语言支持**: 覆盖 15+ 编程语言
+5. **AI 生成**: Layer 3 规则可从 plan.md 自动生成
+6. **安全沙箱**: 动态规则在受限环境中执行
 
-当前实现已完成核心框架和所有规则层，AI 规则生成和安全沙箱是 Layer 3 的核心能力。
+**当前实现状态**: 所有规则层已完成实现，支持 Python、JS/TS、Go、Java、Rust 等 15+ 语言。
 
 ---
 
-*文档版本: 2.0*
+*文档版本: 3.0*
 *最后更新: 2026-02-28*
 *来源: nOmOsAi 系统架构与代码分析*
